@@ -6,9 +6,10 @@ const http = require('node:http');
 const { spawn } = require('node:child_process');
 const assert = require('node:assert/strict');
 const root = path.resolve(__dirname, '..');
-const source = fs.readFileSync(path.join(root, 'colum-manager.user.js'), 'utf8');
+const source = fs.readFileSync(process.env.COLUMN_MANAGER_SCRIPT || path.join(root, 'colum-manager.user.js'), 'utf8');
 const capture = process.env.BRAZZERS_HTML;
 const c4sRoot = process.env.C4S_ROOT;
+const studioCapture = process.env.C4S_STUDIO_HTML;
 const epornerCapture = process.env.EPORNER_CAPTURE;
 const epornerStyles = JSON.parse(process.env.EPORNER_STYLES || '[]').map(file => fs.readFileSync(file, 'utf8').replace(/@-moz-document[^\{]+\{/g, '@media all {')).join('\n');
 const thumbnail = 'data:image/svg+xml,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="640" height="360"><rect width="640" height="360" fill="#544663"/></svg>');
@@ -69,7 +70,7 @@ const server = http.createServer((req, res) => {
     const epMatch = /^\/capture-eporner-(\d+)$/.exec(req.url);
     const epFile = epMatch && path.join(epornerCapture, `page-${epMatch[1]}`);
     res.setHeader('Content-Type', 'text/html; charset=utf-8');
-    res.end(`<!doctype html><html><head><meta charset="utf-8"><style>${fixtureCSS}</style>${site === 'eporner' ? `<style>${epFile ? fs.readFileSync(epFile+'.css','utf8') : ''}\n${epornerConflictCSS}\n${epornerStyles}</style>` : ''}</head><body>${epFile ? capturedMarkup(epFile+'.html') : req.url === '/capture' ? capturedMarkup() : markup(site)}
+    res.end(`<!doctype html><html><head><meta charset="utf-8"><style>${fixtureCSS}</style>${req.url === '/studio-capture' ? `<style>${fs.readFileSync(path.join(c4sRoot, 'verification/layout-tailwind.css'),'utf8')}</style>` : ''}${site === 'eporner' ? `<style>${epFile ? fs.readFileSync(epFile+'.css','utf8') : ''}\n${epornerConflictCSS}\n${epornerStyles}</style>` : ''}</head><body>${req.url === '/studio-capture' ? capturedMarkup(studioCapture) : epFile ? capturedMarkup(epFile+'.html') : req.url === '/capture' ? capturedMarkup() : markup(site)}
       ${req.url === '/virtual' ? virtualScript() : ''}
       ${req.url === '/coexist-before' ? '<script src="/downloader.js"></script>' : ''}
       <script src="/script.js"></script>${req.url === '/coexist-after' ? '<script src="/downloader.js"></script>' : ''}</body></html>`);
@@ -152,6 +153,34 @@ async function main() {
             rects.forEach((r,i)=>{if(r.width<1||r.right>bounds.right+1||r.left<bounds.left-1)throw Error('Card overflow');if(i%cols&&Math.abs(r.top-rects[i-1].top)>1)throw Error('Row gaps');if(i>=cols&&r.top<rects[i-cols].bottom-1)throw Error('Row overlap');});
             return {cols,count:cards.length,width:bounds.width,gap:parseFloat(getComputedStyle(grid).gap)};
         })()`;
+        async function scrollStability(route = '/') {
+            await page.send('Emulation.setDeviceMetricsOverride', { width: 1920, height: 1080, deviceScaleFactor: 1, mobile: false });
+            await navigate('c4splus', route);
+            await change('wide', true);
+            await change('columns', 1);
+            await evaluate("scrollTo(0, document.documentElement.scrollHeight-innerHeight-80)");
+            await pause(100);
+            const result = await evaluate(`(async()=>{
+              const start=scrollY, samples=[start];
+              const container=document.querySelector('[data-cm-wide]'),width=container.getBoundingClientRect().width,widths=[];
+              const nativeStyle=window.getComputedStyle;
+              window.getComputedStyle=function(...args){widths.push(container.getBoundingClientRect().width);return nativeStyle.apply(this,args)};
+              const notice=document.createElement('span');notice.style.cssText='position:fixed;top:0';document.body.append(notice);
+              for(let n=0;n<12;n++) {
+                notice.className='notice-'+n;
+                await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));
+                samples.push(scrollY);
+              }
+              window.getComputedStyle=nativeStyle;
+              notice.remove();return {start,min:Math.min(...samples),max:Math.max(...samples),width,minWidth:Math.min(width,...widths)};
+            })()`);
+            assert(result.start > 2000, 'Regression must scroll deep into a long listing');
+            assert(result.max-result.min<=1, `Scroll jumped during unrelated updates (${route}): ${JSON.stringify(result)}`);
+            assert(result.width-result.minWidth<=1, `Wide container temporarily collapsed during layout reads (${route}): ${JSON.stringify(result)}`);
+            console.log(`PASS scroll stability ${route}: ${result.start}px stays fixed through repeated page mutations`);
+        }
+        await scrollStability();
+        if (studioCapture) await scrollStability('/studio-capture');
         for (const site of ['c4splus', 'brazzers', 'eporner']) {
             await page.send('Emulation.setDeviceMetricsOverride', { width: 1920, height: 1080, deviceScaleFactor: 1, mobile: false });
             await navigate(site);
@@ -262,6 +291,7 @@ async function main() {
         }
         if (c4sRoot) {
             for (const route of ['/coexist-before', '/coexist-after']) {
+                await scrollStability(route);
                 await navigate('c4splus', route);
                 await wait("!!document.querySelector('#c4splus-layout-control')");
                 await change('columns', 4); await change('gap', 20); await change('hideLocked', true);

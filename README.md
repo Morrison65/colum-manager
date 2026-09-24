@@ -1,6 +1,8 @@
 # colum-manager
 
-Standalone Tampermonkey userscript for **desktop Chrome**, extracted from the column controls in `c4splus-downloader`. Version **1.1.0**, supporting C4SPlus, Brazzers and Eporner. The repository name intentionally follows the requested spelling.
+Standalone Tampermonkey userscript for **desktop Chrome**, extracted from the column controls in `c4splus-downloader`. Version **1.1.1**, supporting C4SPlus, Brazzers and Eporner. The repository name intentionally follows the requested spelling.
+
+**v1.1.1 fixes Wide layout scroll jumps:** existing listing and container styles remain applied during refreshes. Only changed properties and retired layout markers are updated. Previously a refresh briefly restored native narrow widths; a concurrent layout measurement could clamp the scroll position while the page was temporarily shorter. Resize handling now reacts to width changes rather than every thumbnail/list height change.
 
 ## Install
 
@@ -72,10 +74,17 @@ Optional local integration checks:
 ```powershell
 $env:BRAZZERS_HTML = 'C:\path\to\Brazzers Videos - Best HD Porn Movies & High Quality Sex Clips.html'
 $env:C4S_ROOT = 'C:\path\to\c4splus-downloader'
+$env:C4S_STUDIO_HTML = 'C:\path\to\saved-studio-listing.html'
 npm run check
 ```
 
 `C4S_ROOT` needs the actual userscript and its existing `verification/InfiniteScroll-CyVLzibW.js`, `react.production.min.js`, and `react-dom.production.min.js`. These optional checks exercise downloader coexistence and the captured production virtualizer with React, card events and two further pages of results. Private captures and vendor bundles are not copied into this repository.
+
+The Wide layout regression scrolls deep into a listing and triggers unrelated page mutations while measuring container geometry during refreshes. It fails on v1.1.0 (1905px briefly contracts to 1164px and scrolling can reset to zero) and passes on v1.1.1. It also runs with the saved C4SPlus studio markup and captured stylesheet when `C4S_STUDIO_HTML` and `C4S_ROOT` are set, and with the actual downloader in both injection orders. The reported studio 82095 URL returned the logged-out landing page in the isolated browser, so authenticated live verification of that exact filtered listing is not claimed.
+
+## Releases
+
+Every completed userscript version is committed with its tests and documentation after validation. Each completed commit is automatically pushed to the current branch's configured upstream using a normal push. See [AGENTS.md](AGENTS.md) for the standing user instruction and failure handling.
 
 The supplied Brazzers HTML's **24 actual card wrappers** passed column/geometry checks. Its generated Emotion/styled-components stylesheet tags are empty in the saved file. The test retains available saved styles (including the supplied Stylus CSS), with representative grid rules reconstructed from the saved bundle's layout. This validates detection and layout overrides, **not complete live stylesheet fidelity**.
 

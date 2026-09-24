@@ -1,6 +1,6 @@
 {
   "name": "colum-manager",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "private": true,
   "description": "Shared Tampermonkey thumbnail column controls with site adapters",
   "scripts": {

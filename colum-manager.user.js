@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Colum Manager - C4SPlus, Brazzers and Eporner
 // @namespace    local.colum-manager
-// @version      1.1.0
+// @version      1.1.1
 // @description  Adjustable thumbnail columns, spacing and wide listings with independent site preferences.
 // @match        https://c4splus.com/*
 // @match        https://www.c4splus.com/*
@@ -17,7 +17,7 @@
 /* global globalThis:readonly, module:readonly */
 (function () {
     'use strict';
-    const VERSION = '1.1.0';
+    const VERSION = '1.1.1';
     const STORAGE_KEY = 'colum-manager.settings.v1';
     const DEFAULTS = { columns: 3, gap: 8, wide: true, hidePromos: true, hideLocked: false };
     function cleanSettings(value) {
@@ -175,7 +175,7 @@
     style.id = 'colum-manager-style';
     style.textContent = `
       html[data-colum-manager] [data-cm-grid="flow"]:not(:has(> .absolute)) {
-        display:grid!important;grid-template-columns:repeat(var(--cm-columns),minmax(0,1fr))!important;
+        display:grid!important;grid-template-columns:repeat(var(--cm-columns,3),minmax(0,1fr))!important;
         gap:var(--cm-gap)!important;align-items:start!important;margin:0!important;padding:0!important;width:100%!important;min-width:0!important;
       }
       html[data-colum-manager] [data-cm-grid="flow"] > [data-cm-card] {
@@ -267,7 +267,7 @@
     Object.keys(DEFAULTS).forEach(bindInput);
     shadow.querySelector('#reset').addEventListener('click', () => { settings = cleanSettings(); updateInputs(); save(); });
     updateInputs();
-    let frame = 0, marked = new Set(), observed = new Set();
+    let frame = 0, marked = new Map(), nextMarks = new Map(), observed = new Set();
     const inlineOriginals = new Map();
     function overrideCard(card) {
         // The user's Eporner theme has two-ID !important selectors and mobile
@@ -283,11 +283,40 @@
         if (!frame) frame = requestAnimationFrame(() => { frame = 0; applyLayout(); });
     }
     const observer = new MutationObserver(schedule);
-    const resizeObserver = new ResizeObserver(schedule);
+    const observedWidths = new WeakMap();
+    const resizeObserver = new ResizeObserver(entries => {
+        // Appending cards and loading previews change height, not column fit.
+        // Do not turn scrolling/lazy loading into repeated full layout passes.
+        for (const entry of entries) {
+            const width = entry.contentRect.width;
+            if (observedWidths.get(entry.target) !== width) {
+                observedWidths.set(entry.target, width);
+                schedule();
+            }
+        }
+    });
+    function setAttribute(element, attribute, value) {
+        if (element.getAttribute(attribute) !== value) element.setAttribute(attribute, value);
+    }
+    function setProperty(element, name, value) {
+        if (element.style.getPropertyValue(name) !== value) element.style.setProperty(name, value);
+    }
     function mark(element, attribute, value = '') {
         if (!element) return;
-        element.setAttribute(attribute, value);
-        marked.add(element);
+        if (!nextMarks.has(element)) nextMarks.set(element, new Set());
+        nextMarks.get(element).add(attribute);
+        setAttribute(element, attribute, value);
+    }
+    function removeObsoleteMarks() {
+        for (const [node, attributes] of marked) {
+            for (const name of attributes) {
+                if (!nextMarks.get(node)?.has(name)) node.removeAttribute(name);
+            }
+            if (attributes.has('data-cm-grid') && !nextMarks.get(node)?.has('data-cm-grid')) {
+                node.style.removeProperty('--cm-columns'); node.style.removeProperty('--cm-gap');
+            }
+        }
+        marked = nextMarks;
     }
     function widen(grid) {
         if (!settings.wide) return;
@@ -319,7 +348,7 @@
         observer.disconnect();
         try {
             if (!document.body || !document.head) return;
-            document.documentElement.setAttribute('data-colum-manager', site);
+            setAttribute(document.documentElement, 'data-colum-manager', site);
             document.documentElement.toggleAttribute('data-cm-hide-promos', settings.hidePromos);
             if (!style.isConnected) document.head.append(style);
             if (!control.isConnected) document.body.append(control);
@@ -330,11 +359,10 @@
                 }
             }
             inlineOriginals.clear();
-            for (const node of marked) {
-                for (const name of ['data-cm-grid', 'data-cm-card', 'data-cm-wide', 'data-cm-list-column', 'data-cm-gutter', 'data-cm-hide-locked']) node.removeAttribute(name);
-                node.style.removeProperty('--cm-columns'); node.style.removeProperty('--cm-gap');
-            }
-            marked = new Set();
+            // Keep managed dimensions active during all reads. Tearing down the
+            // wide container here lets scroll anchoring/layout readers see a
+            // transient narrow, shorter page before it expands again.
+            nextMarks = new Map();
             const groups = adapter.groups(), nextObserved = new Set();
             let flowCount = 0, virtualCount = 0;
             for (const [grid, cards] of groups) {
@@ -352,10 +380,15 @@
                     if (site === 'eporner') overrideCard(card);
                 }
                 if (settings.hideLocked) mark(grid, 'data-cm-hide-locked');
-                grid.style.setProperty('--cm-gap', `${settings.gap}px`);
-                grid.style.setProperty('--cm-columns', String(fittingColumns(grid.clientWidth, settings.columns, settings.gap)));
+                setProperty(grid, '--cm-gap', `${settings.gap}px`);
                 nextObserved.add(grid);
                 flowCount++;
+            }
+            // Remove only retired marks (including Wide layout being turned off)
+            // before measuring the final containers, never all marks per pass.
+            removeObsoleteMarks();
+            for (const grid of nextObserved) {
+                setProperty(grid, '--cm-columns', String(fittingColumns(grid.clientWidth, settings.columns, settings.gap)));
             }
             for (const node of observed) if (!nextObserved.has(node)) resizeObserver.unobserve(node);
             for (const node of nextObserved) if (!observed.has(node)) resizeObserver.observe(node);
@@ -364,7 +397,8 @@
             const message = virtualCount ? 'Virtualized results retain native positions until a supported adapter is ready.'
                 : flowCount ? `${settings.columns} maximum columns · ${flowCount} list${flowCount === 1 ? '' : 's'}. Fewer columns on narrow screens.`
                     : 'Waiting for a supported video listing…';
-            status.textContent = message + (storageAvailable ? '' : ' Storage unavailable; settings last this session.');
+            const text = message + (storageAvailable ? '' : ' Storage unavailable; settings last this session.');
+            if (status.textContent !== text) status.textContent = text;
         } finally {
             observer.observe(document.documentElement, { childList: true, subtree: true, attributes: true, attributeFilter: ['class', 'href', 'data-testid'] });
         }
