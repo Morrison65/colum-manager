@@ -1,11 +1,13 @@
 // ==UserScript==
-// @name         Colum Manager - C4SPlus and Brazzers
+// @name         Colum Manager - C4SPlus, Brazzers and Eporner
 // @namespace    local.colum-manager
-// @version      1.0.0
+// @version      1.1.0
 // @description  Adjustable thumbnail columns, spacing and wide listings with independent site preferences.
 // @match        https://c4splus.com/*
 // @match        https://www.c4splus.com/*
 // @match        https://site-ma.brazzers.com/*
+// @match        https://eporner.com/*
+// @match        https://*.eporner.com/*
 // @run-at       document-idle
 // @grant        none
 // @sandbox      raw
@@ -15,7 +17,7 @@
 /* global globalThis:readonly, module:readonly */
 (function () {
     'use strict';
-    const VERSION = '1.0.0';
+    const VERSION = '1.1.0';
     const STORAGE_KEY = 'colum-manager.settings.v1';
     const DEFAULTS = { columns: 3, gap: 8, wide: true, hidePromos: true, hideLocked: false };
     function cleanSettings(value) {
@@ -35,6 +37,7 @@
     function siteFor(hostname) {
         if (['c4splus.com', 'www.c4splus.com'].includes(hostname)) return 'c4splus';
         if (hostname === 'site-ma.brazzers.com') return 'brazzers';
+        if (hostname === 'eporner.com' || hostname.endsWith('.eporner.com')) return 'eporner';
         return null;
     }
     // C4SPlus InfiniteScroll/useVirtualList adapter. Require the complete observed
@@ -146,11 +149,26 @@
         }
         return groups;
     }
+    function epornerGroups() {
+        const cards = new Set();
+        for (const card of document.querySelectorAll('.mb, .mbhd')) {
+            if (card.parentElement.closest('.mb, .mbhd, .swiper-wrapper, .flickity-slider, [aria-roledescription="carousel"]')) continue;
+            const isVideo = [...card.querySelectorAll('a[href]')].some(link => {
+                try {
+                    const url = new URL(link.getAttribute('href'), location.href);
+                    return siteFor(url.hostname) === 'eporner' && /^\/(?:hd-porn\/[^/]+\/|video-[^/]+\/)/.test(url.pathname);
+                } catch { return false; }
+            });
+            if (isVideo && card.querySelector('.mbimg, .mbcontent, img')) cards.add(card);
+        }
+        return groupsFrom(cards);
+    }
     // Adding a site requires only a hostname match, an adapter and scoped CSS.
     // Shared controls, persistence, sizing and lifecycle do not depend on the site.
     const adapters = {
         c4splus: { label: 'C4SPlus', groups: c4sGroups, virtualDispatch: searchLayoutDispatch },
-        brazzers: { label: 'Brazzers', groups: brazzersGroups }
+        brazzers: { label: 'Brazzers', groups: brazzersGroups },
+        eporner: { label: 'Eporner', groups: epornerGroups }
     };
     const adapter = adapters[site];
     const style = document.createElement('style');
@@ -172,6 +190,9 @@
       html[data-colum-manager="c4splus"] #c4splus-layout-control {display:none!important}
       html[data-colum-manager="brazzers"] [data-cm-list-column] {flex-basis:96%!important;flex-grow:1!important;max-width:100%!important;min-width:0!important}
       html[data-colum-manager="brazzers"] [data-cm-gutter] {flex-basis:2%!important;max-width:2%!important;min-width:0!important}
+      html[data-colum-manager="eporner"] [data-cm-grid="flow"] > :not([data-cm-card]) {grid-column:1 / -1}
+      html[data-colum-manager="eporner"] [data-cm-grid="flow"]::before,
+      html[data-colum-manager="eporner"] [data-cm-grid="flow"]::after {content:none!important}
       html[data-colum-manager="brazzers"][data-cm-hide-promos] #root > div:first-of-type > div > div > div > div:has(> div a[href^='https://officialzzstore.com']),
       html[data-colum-manager="brazzers"][data-cm-hide-promos] #root > div > div:has(> img[src*='/catfish.gif']),
       html[data-colum-manager="brazzers"][data-cm-hide-promos] #root > div > div:has(> button > svg) {display:none!important}
@@ -247,6 +268,16 @@
     shadow.querySelector('#reset').addEventListener('click', () => { settings = cleanSettings(); updateInputs(); save(); });
     updateInputs();
     let frame = 0, marked = new Set(), observed = new Set();
+    const inlineOriginals = new Map();
+    function overrideCard(card) {
+        // The user's Eporner theme has two-ID !important selectors and mobile
+        // display:contents. Inline overrides keep each thumbnail/title one item.
+        // Restore exact prior declarations before rediscovery or removing a card.
+        const display = getComputedStyle(card).display === 'none' ? 'none' : 'block';
+        const properties = { display, float: 'none', width: '100%', 'max-width': 'none' };
+        inlineOriginals.set(card, Object.keys(properties).map(name => [name, card.style.getPropertyValue(name), card.style.getPropertyPriority(name)]));
+        for (const [name, value] of Object.entries(properties)) card.style.setProperty(name, value, 'important');
+    }
     const attempts = new WeakSet();
     function schedule() {
         if (!frame) frame = requestAnimationFrame(() => { frame = 0; applyLayout(); });
@@ -263,6 +294,10 @@
         if (site === 'c4splus') {
             for (let node = grid.parentElement; node && node !== document.body; node = node.parentElement) {
                 if ([...node.classList].some(name => /^max-w-c4s-\d+$/.test(name))) { mark(node, 'data-cm-wide'); break; }
+            }
+        } else if (site === 'eporner') {
+            for (let node = grid.parentElement; node && node !== document.body; node = node.parentElement) {
+                if (node.matches('#content, #div-search-results, #panel-rightXpornstar, main, .results-video-results-layout')) mark(node, 'data-cm-wide');
             }
         } else {
             const section = grid.closest('section[id^="List-container-"]');
@@ -288,6 +323,13 @@
             document.documentElement.toggleAttribute('data-cm-hide-promos', settings.hidePromos);
             if (!style.isConnected) document.head.append(style);
             if (!control.isConnected) document.body.append(control);
+            for (const [node, properties] of inlineOriginals) {
+                for (const [name, value, priority] of properties) {
+                    if (value) node.style.setProperty(name, value, priority);
+                    else node.style.removeProperty(name);
+                }
+            }
+            inlineOriginals.clear();
             for (const node of marked) {
                 for (const name of ['data-cm-grid', 'data-cm-card', 'data-cm-wide', 'data-cm-list-column', 'data-cm-gutter', 'data-cm-hide-locked']) node.removeAttribute(name);
                 node.style.removeProperty('--cm-columns'); node.style.removeProperty('--cm-gap');
@@ -305,7 +347,10 @@
                 }
                 widen(grid);
                 mark(grid, 'data-cm-grid', 'flow');
-                for (const card of cards) mark(card, 'data-cm-card');
+                for (const card of cards) {
+                    mark(card, 'data-cm-card');
+                    if (site === 'eporner') overrideCard(card);
+                }
                 if (settings.hideLocked) mark(grid, 'data-cm-hide-locked');
                 grid.style.setProperty('--cm-gap', `${settings.gap}px`);
                 grid.style.setProperty('--cm-columns', String(fittingColumns(grid.clientWidth, settings.columns, settings.gap)));

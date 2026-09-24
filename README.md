@@ -1,6 +1,6 @@
 # colum-manager
 
-Standalone Tampermonkey userscript for **desktop Chrome**, extracted from the column controls in `c4splus-downloader`. Version **1.0.0**. The repository name intentionally follows the requested spelling.
+Standalone Tampermonkey userscript for **desktop Chrome**, extracted from the column controls in `c4splus-downloader`. Version **1.1.0**, supporting C4SPlus, Brazzers and Eporner. The repository name intentionally follows the requested spelling.
 
 ## Install
 
@@ -13,6 +13,7 @@ Supported URLs:
 - `https://c4splus.com/*`
 - `https://www.c4splus.com/*`
 - `https://site-ma.brazzers.com/*`, including `/scenes?addon=5951&sortby=rating&tags=448`
+- `https://eporner.com/*` and `https://*.eporner.com/*`, including `www` and language subdomains. The requested “eponer.com” is interpreted as **eporner.com**, matching the attached CSS; the misspelled host is not matched.
 
 No runtime dependencies, downloads, API requests or external resources are added. The `@match`, `@sandbox raw` and `@grant none` metadata follow the [Tampermonkey documentation](https://www.tampermonkey.net/documentation.php?locale=en). Page context is needed by the guarded C4SPlus React adapter.
 
@@ -37,6 +38,8 @@ The script follows newly inserted cards, filter results, body replacement and li
 
 **C4SPlus:** works standalone or alongside the existing downloader. First use imports its saved columns and Hide locked preference. When both run, this script hides the downloader's old layout toolbar and synchronizes its two layout settings. Download and playback controls remain available. Coexistence was tested against the local downloader **v1.10.2**, in both injection orders. Its existing widening still applies when this script's Wide layout is off. To return to only the downloader's layout, disable this userscript and reload.
 
+**Eporner:** keep your existing Stylus theme enabled. The script handles video cards on the homepage, listings, search/profile pages and related-video sections using `.mb`/`.mbhd` wrappers with same-site video links. It overrides the supplied `32.15% !important`/`40% !important` widths, floats and mobile `display: contents !important` without changing theme colors or player controls. Important inline declarations on managed cards overcome the theme's high-specificity two-ID selectors; prior inline values are restored before rediscovery. Cards already hidden by site/theme rules stay hidden. Pagination/non-card siblings span the row, and clearfix pseudo-elements cannot create phantom cells. Photo/category cards and player layout are not converted. `xhtotal.com` appears in the attached CSS but is not included in this userscript's domain matches.
+
 Search uses virtualized cards. The adapter recognizes the complete observed React hook signature, asks React to render the loaded cards in normal flow and waits for React to remove absolute positions. Unknown virtualizers retain their native layout and show a status message. No guessed hook dispatches or forced removal of virtual positions are used. Switching a loaded search into flow can increase DOM size on very long result lists.
 
 ## Adapter design
@@ -45,6 +48,7 @@ Shared controls, validation, storage, responsive sizing, observers and layout CS
 
 - C4SPlus uses clip-card test IDs and listing containers; older responsive width wrappers are supported. Carousel tracks are excluded.
 - Brazzers discovers repeated scene cards inside `section[id^="List-container-"]` using same-site numeric scene URLs. Two links to the same scene identify thumbnail/title pairs even before lazy images load. Generated styling classes are not required for multi-card detection. The observed `e1vusg2z0` component marker additionally identifies a single-card result.
+- Eporner groups `.mb`/`.mbhd` video cards by their direct parent. It accepts the site's `/hd-porn/…/` and `/video-…/` URL patterns and excludes photo cards, nested card internals and recognized carousel tracks.
 - To add another site, add its exact metadata match and hostname, implement its `groups()` adapter returning `Map<Element, Element[]>`, and add narrowly scoped CSS if necessary. Never enable all-domain injection as a substitute for an adapter.
 
 The body observer watches child additions/removals and relevant class/link changes. A ResizeObserver handles container widths, including resizes without a window event. Script-authored writes occur while its mutation observer is disconnected. Removed grids are unobserved. Reinjection does not create duplicate controls or observers.
@@ -75,4 +79,20 @@ npm run check
 
 The supplied Brazzers HTML's **24 actual card wrappers** passed column/geometry checks. Its generated Emotion/styled-components stylesheet tags are empty in the saved file. The test retains available saved styles (including the supplied Stylus CSS), with representative grid rules reconstructed from the saved bundle's layout. This validates detection and layout overrides, **not complete live stylesheet fidelity**.
 
+Eporner was captured from the public homepage and two profile pages with the site-capture skill. The generated site styles and **both full attached user styles** were replayed locally. These captures contained **65, 38 and 38 managed video cards** and passed 1/4/8-column checks at 1920/900/390px. The standalone Eporner fixture additionally tests the two-ID mobile `display: contents !important` conflict at 320px. Repeat the capture tests by setting `EPORNER_CAPTURE` to the helper's output directory and `EPORNER_STYLES` to a JSON array of user-style file paths:
+
+```powershell
+$env:EPORNER_CAPTURE = 'C:\path\to\capture-output'
+$env:EPORNER_STYLES = ConvertTo-Json -Compress -InputObject @('C:\path\to\theme.user.css')
+npm run check
+```
+
+The test translates the supplied Stylus `@-moz-document` wrappers to `@media all` only inside the Eporner fixture. The production userscript does not replace or install the theme.
+
 Headless page injection does **not** verify Tampermonkey extension installation, injection permissions or authenticated live-site behavior. No such verification is claimed. Site revisions can require adapter updates; unsupported layouts are left unchanged.
+
+## Reusable site-capture skill
+
+[`skills/capture-site-layout/SKILL.md`](skills/capture-site-layout/SKILL.md) and its dependency-free Node helper capture rendered HTML, generated CSS and computed card geometry, with bounded same-origin subpage discovery. A copy is installed at `~/.codex/skills/capture-site-layout` for future Codex sessions. Invoke it as `$capture-site-layout`; restart the Codex session if needed for skill discovery.
+
+The skill is intended for layout development. Captures use an isolated unauthenticated Chrome profile and remain local; they are not a crawler for video downloads. See the skill for options and capture limitations. `verification/` is ignored by Git.
