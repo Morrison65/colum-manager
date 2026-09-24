@@ -10,9 +10,11 @@ const source = fs.readFileSync(process.env.COLUMN_MANAGER_SCRIPT || path.join(ro
 const capture = process.env.BRAZZERS_HTML;
 const c4sRoot = process.env.C4S_ROOT;
 const studioCapture = process.env.C4S_STUDIO_HTML;
+const watchlistCapture = process.env.C4S_WATCHLIST_HTML;
 const epornerCapture = process.env.EPORNER_CAPTURE;
 const epornerStyles = JSON.parse(process.env.EPORNER_STYLES || '[]').map(file => fs.readFileSync(file, 'utf8').replace(/@-moz-document[^\{]+\{/g, '@media all {')).join('\n');
 const thumbnail = 'data:image/svg+xml,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="640" height="360"><rect width="640" height="360" fill="#544663"/></svg>');
+const iconPlaceholder = 'data:image/svg+xml,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24"><circle cx="12" cy="12" r="9" fill="#bb92d1"/></svg>');
 const card = (site, i) => site === 'c4splus'
     ? `<div data-testid="studio-clip-card" class="w-card"><a href="/clip/${1000+i}/sample"><span data-testid="studio-thumb-wrapper"><img src="${thumbnail}"></span>Video ${i}</a>${i%2 ? '' : '<span data-testid="clip-overlay_tag_lock">Locked</span>'}</div>`
     : site === 'eporner' ? `<div class="mb"><div class="mbimg"><div class="mbcontent"><a href="/hd-porn/test${1000+i}/sample/"><img src="${thumbnail}"></a></div></div><div class="mbunder"><p class="mbtit"><a href="/hd-porn/test${1000+i}/sample/">Video ${i}</a></p></div></div>`
@@ -34,7 +36,7 @@ function capturedMarkup(filename = capture) {
     if (!body) throw Error('Capture has no body');
     return styles + body.replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, '')
         .replace(/<(?:iframe|object|embed|link|source)\b[^>]*>/gi, '')
-        .replace(/<img\b[^>]*>/gi, tag => tag.replace(/\s(?:src|srcset)="[^"]*"/gi, '').replace('<img', `<img src="${thumbnail}"`));
+        .replace(/<img\b[^>]*>/gi, tag => tag.replace(/\s(?:src|srcset)="[^"]*"/gi, '').replace('<img', `<img src="${/cams\.svg|overlay-c4s|clip-persistent-overlay_image/.test(tag) ? iconPlaceholder : thumbnail}"`));
 }
 function virtualScript() {
     const raw = fs.readFileSync(path.join(c4sRoot, 'verification/InfiniteScroll-CyVLzibW.js'), 'utf8');
@@ -69,11 +71,17 @@ const server = http.createServer((req, res) => {
     const site = host.startsWith('c4splus.com') ? 'c4splus' : host.includes('eporner.com') ? 'eporner' : 'brazzers';
     const epMatch = /^\/capture-eporner-(\d+)$/.exec(req.url);
     const epFile = epMatch && path.join(epornerCapture, `page-${epMatch[1]}`);
+    const watchlistPage = req.url.startsWith('/watchlist-');
+    let watchlistCSS = '';
+    if (watchlistPage) {
+        const directory = path.join(path.dirname(watchlistCapture), path.basename(watchlistCapture, '.html')+'_files');
+        watchlistCSS = fs.readdirSync(directory).filter(file=>file.endsWith('.css')).map(file=>fs.readFileSync(path.join(directory,file),'utf8')).join('\n');
+    }
     res.setHeader('Content-Type', 'text/html; charset=utf-8');
-    res.end(`<!doctype html><html><head><meta charset="utf-8"><style>${fixtureCSS}</style>${req.url === '/studio-capture' ? `<style>${fs.readFileSync(path.join(c4sRoot, 'verification/layout-tailwind.css'),'utf8')}</style>` : ''}${site === 'eporner' ? `<style>${epFile ? fs.readFileSync(epFile+'.css','utf8') : ''}\n${epornerConflictCSS}\n${epornerStyles}</style>` : ''}</head><body>${req.url === '/studio-capture' ? capturedMarkup(studioCapture) : epFile ? capturedMarkup(epFile+'.html') : req.url === '/capture' ? capturedMarkup() : markup(site)}
+    res.end(`<!doctype html><html><head><meta charset="utf-8"><style>${watchlistPage ? 'body{margin:0;background:#0b080f;color:#fff}' : fixtureCSS}</style><style>${watchlistCSS}</style>${req.url === '/studio-capture' ? `<style>${fs.readFileSync(path.join(c4sRoot, 'verification/layout-tailwind.css'),'utf8')}</style>` : ''}${site === 'eporner' ? `<style>${epFile ? fs.readFileSync(epFile+'.css','utf8') : ''}\n${epornerConflictCSS}\n${epornerStyles}</style>` : ''}</head><body>${watchlistPage ? capturedMarkup(watchlistCapture) : req.url === '/studio-capture' ? capturedMarkup(studioCapture) : epFile ? capturedMarkup(epFile+'.html') : req.url === '/capture' ? capturedMarkup() : markup(site)}
       ${req.url === '/virtual' ? virtualScript() : ''}
       ${req.url === '/coexist-before' ? '<script src="/downloader.js"></script>' : ''}
-      <script src="/script.js"></script>${req.url === '/coexist-after' ? '<script src="/downloader.js"></script>' : ''}</body></html>`);
+      <script src="/script.js"></script>${req.url === '/coexist-after' || req.url === '/watchlist-coexist' ? '<script src="/downloader.js"></script>' : ''}</body></html>`);
 });
 const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
 async function connect(url) {
@@ -181,6 +189,51 @@ async function main() {
         }
         await scrollStability();
         if (studioCapture) await scrollStability('/studio-capture');
+        if (watchlistCapture) {
+            await navigate('c4splus', '/watchlist-capture');
+            await change('columns', 3);
+            assert.equal(await evaluate("document.querySelectorAll('[data-cm-watchlist-card]').length"),12);
+            assert(await evaluate("document.querySelector('#colum-manager-control').hasAttribute('data-cm-docked')"));
+            assert(await evaluate("document.querySelector('#colum-manager-account-toggle').getRootNode()===document"),'Sidebar toggle must be in the actual page');
+            assert.equal(await evaluate("document.querySelector('#colum-manager-account-toggle').getAttribute('aria-expanded')"),'true');
+            const beforeWidth=await evaluate("document.querySelector('[data-cm-watchlist-article]').getBoundingClientRect().width");
+            await evaluate("document.querySelector('#colum-manager-account-toggle').click()"); await pause(80);
+            assert.equal(await evaluate("getComputedStyle(document.querySelector('[data-cm-account-sidebar]')).display"),'none');
+            assert(await evaluate("document.querySelector('[data-cm-watchlist-article]').getBoundingClientRect().width")>beforeWidth+150);
+            await navigate('c4splus','/watchlist-capture');
+            assert.equal(await evaluate("document.querySelector('#colum-manager-account-toggle').getAttribute('aria-expanded')"),'false');
+            await evaluate("document.querySelector('#colum-manager-account-toggle').click()");
+            for(const width of [1920,1280,900,390,320]) {
+                await page.send('Emulation.setDeviceMetricsOverride',{width,height:1080,deviceScaleFactor:1,mobile:false});await pause(100);
+                const result=await evaluate(`(()=>{const article=document.querySelector('[data-cm-watchlist]');const cards=[...article.querySelectorAll('[data-cm-watchlist-card]')];const rect=article.getBoundingClientRect();
+                  for(const card of cards){const r=card.getBoundingClientRect();if(r.width<1||r.left<rect.left-1||r.right>rect.right+1)throw Error('Watchlist card overflow');const title=card.querySelector('[data-testid="watchlist-page-clip-card-title"]').getBoundingClientRect();if(title.width<30)throw Error('Title squeezed');}
+                  for(const el of article.querySelectorAll('[data-cm-watchlist-toolbar] button,[data-testid="watchlist-search-bar_container"],#colum-manager-control')){const r=el.getBoundingClientRect();if(r.width&&r.right>innerWidth+1)throw Error('Watchlist toolbar overflow');}
+                  return {overflow:article.scrollWidth>article.clientWidth+1||rect.right>innerWidth+1,count:cards.length,scroll:article.scrollWidth,client:article.clientWidth,rect:{left:rect.left,right:rect.right},outside:[...article.querySelectorAll('*')].filter(e=>e.getBoundingClientRect().right>rect.right+1).slice(0,5).map(e=>({cls:e.className,tag:e.tagName}))};})()`);
+                assert(!result.overflow, 'Watchlist horizontal overflow at '+width+' '+JSON.stringify(result));
+                if(width>=390) assert(await evaluate('document.documentElement.scrollWidth<=innerWidth+1'),'Saved watchlist page overflow at '+width+' '+await evaluate("JSON.stringify([...document.querySelectorAll('body *')].filter(e=>e.getBoundingClientRect().right>innerWidth+1).slice(0,8).map(e=>({tag:e.tagName,cls:e.className,id:e.id})))"));
+                assert.equal(result.count,12);
+                await evaluate("document.querySelector('#colum-manager-account-toggle').click()");await pause(60);
+                await evaluate("document.querySelector('#colum-manager-account-toggle').click()");await pause(60);
+            }
+            await evaluate("document.querySelector('[data-cm-watchlist-card] input[type=checkbox]').click()");
+            await wait("document.querySelector('#colum-manager-watchlist-count').textContent.includes('1 selected')");
+            // Attach sentinels to the original controls; styling must retain nodes/handlers.
+            await evaluate("window.watchlistSearch=document.querySelector('[data-testid=watchlist-search-bar_input-text_search]');window.watchlistEvents=0;watchlistSearch.addEventListener('input',()=>watchlistEvents++);watchlistSearch.value='example';watchlistSearch.dispatchEvent(new Event('input',{bubbles:true}));");
+            await change('columns',4);
+            assert(await evaluate("document.querySelector('[data-testid=watchlist-search-bar_input-text_search]')===watchlistSearch&&watchlistEvents===1"));
+            await page.send('Emulation.setDeviceMetricsOverride',{width:1440,height:1100,deviceScaleFactor:1,mobile:false});await pause(100);
+            await change('columns',3);
+            if(process.env.SCREENSHOT_DIR){
+                await evaluate("document.querySelectorAll('[data-testid$=clip-card-title]').forEach((e,i)=>{e.textContent='Saved video '+(i+1)+' — a longer title that remains readable';e.title=e.textContent});document.querySelectorAll('[data-testid$=clip-card-studio-anchor]').forEach(e=>e.textContent='Studio name');scrollTo(0,0)");
+                fs.mkdirSync(process.env.SCREENSHOT_DIR,{recursive:true});
+                const shot=await page.send('Page.captureScreenshot',{format:'png'});fs.writeFileSync(path.join(process.env.SCREENSHOT_DIR,'watchlist-neutral.png'),Buffer.from(shot.data,'base64'));
+            }
+            if(c4sRoot){await navigate('c4splus','/watchlist-coexist');await pause(1700);assert.equal(await evaluate("document.querySelectorAll('[data-cm-watchlist-card]').length"),12);await change('columns',4);assert(await evaluate("document.querySelector('#colum-manager-control').hasAttribute('data-cm-docked')"));}
+            await navigate('c4splus');
+            assert.equal(await evaluate("document.querySelectorAll('#colum-manager-account-toggle').length"),0);
+            assert.equal(await evaluate("document.querySelector('#colum-manager-control').hasAttribute('data-cm-docked')"),false);
+            console.log('PASS supplied watchlist: 12 cards, 1920/1280/900/390/320px, native sidebar toggle, persistence, reclaimed width, selection count, preserved search controls and downloader coexistence');
+        }
         for (const site of ['c4splus', 'brazzers', 'eporner']) {
             await page.send('Emulation.setDeviceMetricsOverride', { width: 1920, height: 1080, deviceScaleFactor: 1, mobile: false });
             await navigate(site);
@@ -331,4 +384,3 @@ async function main() {
     }
 }
 main().catch(error => { console.error(error); process.exitCode = 1; server.close(); });
-

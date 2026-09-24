@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Colum Manager - C4SPlus, Brazzers and Eporner
 // @namespace    local.colum-manager
-// @version      1.1.1
+// @version      1.2.0
 // @description  Adjustable thumbnail columns, spacing and wide listings with independent site preferences.
 // @match        https://c4splus.com/*
 // @match        https://www.c4splus.com/*
@@ -17,7 +17,7 @@
 /* global globalThis:readonly, module:readonly */
 (function () {
     'use strict';
-    const VERSION = '1.1.1';
+    const VERSION = '1.2.0';
     const STORAGE_KEY = 'colum-manager.settings.v1';
     const DEFAULTS = { columns: 3, gap: 8, wide: true, hidePromos: true, hideLocked: false };
     function cleanSettings(value) {
@@ -87,6 +87,12 @@
                 hideLocked: localStorage.getItem('c4splus.layout.hideLocked') === 'true' });
         }
     } catch { storageAvailable = false; }
+    const sidebarKey = 'colum-manager.c4splus.sidebarOpen';
+    let sidebarPreference = null;
+    try {
+        const saved = localStorage.getItem(sidebarKey);
+        if (saved === 'true' || saved === 'false') sidebarPreference = saved === 'true';
+    } catch { /* The page toggle still works for this document. */ }
 
     function groupsFrom(wrappers) {
         const groups = new Map();
@@ -102,7 +108,10 @@
         const listing = element => element && (element.classList.contains('flex-wrap') || getComputedStyle(element).display === 'grid');
         for (const card of document.querySelectorAll('[data-testid$="-clip-card"]')) {
             if (!card.querySelector('a[href*="/clip/"]')) continue;
-            if (listing(card.parentElement)) wrappers.add(card);
+            // Watchlist uses one wrapper per card; its native grid only starts
+            // at md, so computed display alone misses the mobile listing.
+            if (card.dataset.testid === 'watchlist-page-clip-card' && card.closest('article')?.querySelector('[data-testid="watchlist-title"]')) wrappers.add(card.parentElement);
+            else if (listing(card.parentElement)) wrappers.add(card);
             else if (listing(card.parentElement?.parentElement)) wrappers.add(card.parentElement);
         }
         for (const card of document.querySelectorAll('[class~="xl:w-1/5"], [class~="lg:w-1/5"]')) {
@@ -188,6 +197,36 @@
       html[data-colum-manager="c4splus"] [data-cm-card] [data-testid$="-thumb-wrapper"] {display:block;position:relative;aspect-ratio:16/9;max-width:100%;overflow:hidden}
       html[data-colum-manager="c4splus"] [data-cm-grid="flow"][data-cm-hide-locked] > [data-cm-card]:has([data-testid="clip-overlay_tag_lock"]) {display:none!important}
       html[data-colum-manager="c4splus"] #c4splus-layout-control {display:none!important}
+      html[data-colum-manager="c4splus"] [data-cm-watchlist-article] {min-width:0!important}
+      html[data-colum-manager="c4splus"] [data-cm-watchlist] [data-testid="watchlist-title"] {font-size:clamp(26px,3vw,38px);line-height:1.2;text-transform:none;letter-spacing:-.025em;margin-bottom:4px;padding:0}
+      html[data-colum-manager="c4splus"] [data-cm-watchlist-toolbar] {display:flex!important;flex-direction:column!important;gap:14px;padding:16px;background:#15121b;border:1px solid #ffffff20;border-radius:12px}
+      html[data-colum-manager="c4splus"] [data-cm-watchlist-filters] {display:flex!important;flex-wrap:wrap!important;gap:12px!important;order:0!important;width:100%!important;max-width:none!important}
+      html[data-colum-manager="c4splus"] [data-cm-watchlist-filters] > div {min-width:0!important;margin:0!important;padding:0!important}
+      html[data-colum-manager="c4splus"] [data-cm-watchlist-filter-buttons] {flex:1 1 340px!important;gap:10px}
+      html[data-colum-manager="c4splus"] [data-cm-watchlist-filter-buttons] > div {min-width:0!important;margin:0!important;flex:1!important;max-width:none!important}
+      html[data-colum-manager="c4splus"] [data-cm-watchlist-search] {flex:1 1 220px!important}
+      html[data-colum-manager="c4splus"] [data-cm-watchlist-selection] {order:1!important;align-items:center;flex-wrap:wrap;gap:12px;height:auto!important;margin:0!important;padding:0!important}
+      html[data-colum-manager="c4splus"] [data-cm-watchlist] :is([data-testid="clips-source-filter"],[data-testid="category-filter_button"],[data-testid="watchlist-search-bar_container"]) {min-width:0!important;width:100%!important;min-height:44px;border-radius:8px!important;background:#211b2a;border-color:#ffffff35}
+      html[data-colum-manager="c4splus"] [data-cm-watchlist] [data-testid="watchlist-search-bar_input-container"] {min-width:0!important}
+      html[data-colum-manager="c4splus"] [data-cm-watchlist] [data-cm-grid="flow"] {align-items:stretch!important;row-gap:max(16px,var(--cm-gap))!important;margin-top:16px!important}
+      html[data-colum-manager="c4splus"] [data-cm-watchlist] :is([class~="sm:-mx-1.5"],[class~="lg:-mx-2"]):has(> [data-cm-grid]) {margin-left:0!important;margin-right:0!important}
+      html[data-colum-manager="c4splus"] [data-testid="watchlist-page-clip-card"][data-cm-watchlist-card] {height:100%;gap:0;overflow:hidden;border-radius:12px;border:1px solid #ffffff20;background:#16121e;transition:border-color .15s}
+      html[data-colum-manager="c4splus"] [data-cm-watchlist-card]:hover {border-color:#a976c9}
+      html[data-colum-manager="c4splus"] [data-cm-watchlist-card]:has(input:checked) {border-color:#d0a0ed;background:#281b34;box-shadow:inset 0 0 0 1px #b979df}
+      html[data-colum-manager="c4splus"] [data-cm-watchlist-meta] {display:grid!important;grid-template-columns:24px minmax(0,1fr);align-items:start;gap:10px;padding:12px!important;overflow:visible!important}
+      html[data-colum-manager="c4splus"] [data-cm-watchlist-meta] > div {min-width:0;margin:0!important;white-space:normal}
+      html[data-colum-manager="c4splus"] [data-cm-watchlist-meta] [data-testid="watchlist-page-clip-card-title"] {display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;white-space:normal;line-height:1.4;min-height:2.8em;font-size:14px;overflow:hidden}
+      html[data-colum-manager="c4splus"] [data-cm-watchlist-meta] [data-testid="watchlist-page-clip-card-studio-anchor"] {margin-top:6px;font-size:12px;color:#c5b6d1}
+      html[data-colum-manager="c4splus"] [data-cm-watchlist] [role="checkbox"] {width:24px;height:24px;border-color:#a999b7}
+      html[data-colum-manager="c4splus"] [data-cm-watchlist] :is(a,button,input,[role="checkbox"]):focus-visible {outline:2px solid #d3a3f5!important;outline-offset:3px}
+      html[data-colum-manager="c4splus"] #colum-manager-account-toggle {float:right;position:relative;z-index:1;margin:0 0 12px 12px;padding:9px 12px;min-height:40px;border:1px solid #ffffff35;border-radius:8px;background:#211b2a;color:#eee;font:13px/1.4 system-ui;cursor:pointer}
+      html[data-colum-manager="c4splus"] #colum-manager-account-toggle:focus-visible {outline:2px solid #d3a3f5;outline-offset:3px}
+      html[data-colum-manager="c4splus"] [data-cm-account-sidebar] {display:flex!important}
+      html[data-colum-manager="c4splus"] [data-cm-sidebar-collapsed] > [data-cm-account-sidebar] {display:none!important}
+      @media(min-width:1024px){html[data-colum-manager="c4splus"] [data-cm-account-shell] {display:grid!important;grid-template-columns:210px minmax(0,1fr);gap:24px!important}html[data-colum-manager="c4splus"] [data-cm-account-sidebar] {min-width:0!important;width:auto!important;font-size:14px}}
+      @media(min-width:1024px){html[data-colum-manager="c4splus"] [data-cm-account-shell][data-cm-sidebar-collapsed] {grid-template-columns:minmax(0,1fr)}}
+      @media(max-width:1023px){html[data-colum-manager="c4splus"] [data-cm-account-shell] {flex-direction:column!important}html[data-colum-manager="c4splus"] [data-cm-account-sidebar] {min-width:0!important;width:100%;padding:12px;background:#15121b;border-radius:12px}}
+      @media(max-width:767px){html[data-colum-manager="c4splus"] [data-cm-watchlist] {padding:0 12px}html[data-colum-manager="c4splus"] [data-cm-watchlist-toolbar] {padding:12px}html[data-colum-manager="c4splus"] [data-cm-account-shell] {gap:0!important}}
       html[data-colum-manager="brazzers"] [data-cm-list-column] {flex-basis:96%!important;flex-grow:1!important;max-width:100%!important;min-width:0!important}
       html[data-colum-manager="brazzers"] [data-cm-gutter] {flex-basis:2%!important;max-width:2%!important;min-width:0!important}
       html[data-colum-manager="eporner"] [data-cm-grid="flow"] > :not([data-cm-card]) {grid-column:1 / -1}
@@ -199,7 +238,8 @@
     `;
     const control = document.createElement('div');
     control.id = 'colum-manager-control';
-    control.style.cssText = 'position:fixed!important;right:12px!important;bottom:12px!important;z-index:2147483646!important;max-width:calc(100vw - 24px)!important;';
+    const floatingStyle = 'position:fixed!important;right:12px!important;bottom:12px!important;z-index:2147483646!important;max-width:calc(100vw - 24px)!important;';
+    control.style.cssText = floatingStyle;
     const shadow = control.attachShadow({ mode: 'open' });
     shadow.innerHTML = `<style>
       :host{all:initial;color:#f6f3f8;font:13px/1.5 system-ui,sans-serif;color-scheme:dark}
@@ -209,6 +249,9 @@
       input[type=number]{box-sizing:border-box;width:64px;padding:4px;border:1px solid #776a85;border-radius:4px;background:#28232e;color:white}
       button{font:inherit;cursor:pointer;border:1px solid #776a85;border-radius:4px;padding:4px;background:#28232e;color:white}
       :focus-visible{outline:2px solid #d2a1f2;outline-offset:2px}small{color:#d0c5dc;max-width:34ch}[hidden]{display:none!important}
+      :host([data-cm-docked]) details{max-width:none;background:#15121b;border-color:#ffffff20;box-shadow:none}
+      :host([data-cm-docked]) .fields{display:flex;flex-wrap:wrap;align-items:center;gap:12px 20px}
+      :host([data-cm-docked]) label{gap:8px}:host([data-cm-docked]) small{max-width:none;flex:1 1 220px}
     </style><details open><summary>Columns · ${adapter.label}</summary><div class="fields">
       <label>Columns (1–8)<input id="columns" aria-label="Thumbnail columns" type="number" min="1" max="8" step="1"></label>
       <label>Gap (px)<input id="gap" aria-label="Thumbnail gap" type="number" min="0" max="40" step="1"></label>
@@ -218,6 +261,85 @@
       <small id="status" role="status"></small><button id="reset" type="button">Reset settings</button>
     </div></details>`;
     const status = shadow.querySelector('#status');
+    const watchlistCount = document.createElement('span');
+    watchlistCount.id = 'colum-manager-watchlist-count';
+    watchlistCount.setAttribute('role', 'status');
+    watchlistCount.style.cssText = 'margin-left:auto;color:#c9bbd4;font:13px/1.5 system-ui;';
+    const sidebarToggle = document.createElement('button');
+    sidebarToggle.id = 'colum-manager-account-toggle';
+    sidebarToggle.type = 'button';
+    sidebarToggle.addEventListener('click', () => {
+        sidebarPreference = sidebarToggle.getAttribute('aria-expanded') !== 'true';
+        try { localStorage.setItem(sidebarKey, String(sidebarPreference)); } catch { /* Session-only preference. */ }
+        applyLayout();
+    });
+    function prepareWatchlist() {
+        if (site !== 'c4splus') return null;
+        const title = document.querySelector('[data-testid="watchlist-title"]');
+        const article = title?.closest('article');
+        if (!article) return null;
+        const content = title.parentElement;
+        mark(content, 'data-cm-watchlist'); mark(article, 'data-cm-watchlist-article');
+        mark(article.parentElement, 'data-cm-account-shell');
+        const sidebar = [...article.parentElement.children].find(node => node.tagName === 'ASIDE');
+        if (sidebar) {
+            mark(sidebar, 'data-cm-account-sidebar');
+            if (!sidebar.id) sidebar.id = 'colum-manager-account-menu';
+            setAttribute(sidebarToggle, 'aria-controls', sidebar.id);
+            const open = sidebarPreference ?? window.matchMedia('(min-width:1024px)').matches;
+            if (!open) mark(article.parentElement, 'data-cm-sidebar-collapsed');
+            setAttribute(sidebarToggle, 'aria-expanded', String(open));
+            const label = open ? 'Hide account menu' : 'Show account menu';
+            if (sidebarToggle.textContent !== label) sidebarToggle.textContent = label;
+            if (sidebarToggle.parentElement !== content) title.before(sidebarToggle);
+        }
+        const search = content.querySelector('[data-testid="watchlist-search-bar_container"]');
+        const selection = content.querySelector('[data-testid="select-all-checkbox"]');
+        let toolbar = selection?.parentElement;
+        while (toolbar && toolbar !== content && !toolbar.contains(search)) toolbar = toolbar.parentElement;
+        if (toolbar && toolbar !== content && search) {
+            mark(toolbar, 'data-cm-watchlist-toolbar');
+            mark(selection.parentElement, 'data-cm-watchlist-selection');
+            const filters = [...toolbar.children].find(node => node.contains(search));
+            if (filters && filters !== selection.parentElement) {
+                mark(filters, 'data-cm-watchlist-filters');
+                for (const node of filters.children) mark(node, node.contains(search) ? 'data-cm-watchlist-search' : 'data-cm-watchlist-filter-buttons');
+            }
+            if (watchlistCount.parentElement !== selection.parentElement) selection.parentElement.append(watchlistCount);
+        }
+        const cards = [...content.querySelectorAll('[data-testid="watchlist-page-clip-card"]')];
+        for (const card of cards) {
+            mark(card, 'data-cm-watchlist-card');
+            const checkbox = card.querySelector('[data-testid="checkbox"]');
+            if (checkbox) {
+                mark(checkbox.parentElement, 'data-cm-watchlist-meta');
+                const target = checkbox.querySelector('[role="checkbox"]');
+                if (target && !target.hasAttribute('aria-label')) target.setAttribute('aria-label', `Select ${card.querySelector('[data-testid="watchlist-page-clip-card-title"]')?.textContent.trim() || 'video'}`);
+            }
+        }
+        const grid = cards[0]?.parentElement.parentElement;
+        if (grid && control.parentElement !== grid.parentElement) grid.before(control);
+        else if (!grid && control.parentElement !== content) content.append(control);
+        return cards;
+    }
+    function updateWatchlist(cards) {
+        const docked = cards !== null;
+        if (control.hasAttribute('data-cm-docked') !== docked) {
+            control.toggleAttribute('data-cm-docked', docked);
+            control.style.cssText = docked ? 'display:block!important;position:relative!important;max-width:100%!important;margin-top:16px!important;' : floatingStyle;
+            shadow.querySelector('summary').textContent = docked ? 'Watchlist layout' : `Columns · ${adapter.label}`;
+        }
+        if (!docked) {
+            watchlistCount.remove();
+            sidebarToggle.remove();
+            if (control.parentElement !== document.body) document.body.append(control);
+            return;
+        }
+        const shown = cards.filter(card => getComputedStyle(card.parentElement).display !== 'none').length;
+        const selected = cards.filter(card => card.querySelector('input[type="checkbox"]:checked')).length;
+        const text = `${shown} shown on this page · ${selected} selected`;
+        if (watchlistCount.textContent !== text) watchlistCount.textContent = text;
+    }
     function updateInputs() {
         for (const key of Object.keys(DEFAULTS)) {
             const input = shadow.getElementById(key);
@@ -363,6 +485,7 @@
             // wide container here lets scroll anchoring/layout readers see a
             // transient narrow, shorter page before it expands again.
             nextMarks = new Map();
+            const watchlistCards = prepareWatchlist();
             const groups = adapter.groups(), nextObserved = new Set();
             let flowCount = 0, virtualCount = 0;
             for (const [grid, cards] of groups) {
@@ -393,6 +516,7 @@
             for (const node of observed) if (!nextObserved.has(node)) resizeObserver.unobserve(node);
             for (const node of nextObserved) if (!observed.has(node)) resizeObserver.observe(node);
             observed = nextObserved;
+            updateWatchlist(watchlistCards);
             syncDownloader();
             const message = virtualCount ? 'Virtualized results retain native positions until a supported adapter is ready.'
                 : flowCount ? `${settings.columns} maximum columns · ${flowCount} list${flowCount === 1 ? '' : 's'}. Fewer columns on narrow screens.`
@@ -404,9 +528,16 @@
         }
     }
     window.addEventListener('resize', schedule);
+    document.addEventListener('change', event => {
+        if (event.target.matches?.('input[type="checkbox"]') && event.target.closest('[data-cm-watchlist]')) schedule();
+    });
     window.addEventListener('popstate', schedule);
     window.addEventListener('pageshow', schedule);
     window.addEventListener('storage', event => {
+        if (event.key === sidebarKey || event.key === null) {
+            try { const saved = localStorage.getItem(sidebarKey); sidebarPreference = saved === 'true' ? true : saved === 'false' ? false : null; } catch { sidebarPreference = null; }
+            schedule();
+        }
         if (event.key !== STORAGE_KEY && event.key !== null) return;
         try { settings = cleanSettings(JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}')); } catch { settings = cleanSettings(); }
         updateInputs(); schedule();

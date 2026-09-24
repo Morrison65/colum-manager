@@ -1,6 +1,8 @@
 # colum-manager
 
-Standalone Tampermonkey userscript for **desktop Chrome**, extracted from the column controls in `c4splus-downloader`. Version **1.1.1**, supporting C4SPlus, Brazzers and Eporner. The repository name intentionally follows the requested spelling.
+Standalone Tampermonkey userscript for **desktop Chrome**, extracted from the column controls in `c4splus-downloader`. Version **1.2.0**, supporting C4SPlus, Brazzers and Eporner. The repository name intentionally follows the requested spelling.
+
+**v1.2.0 improves the C4SPlus watchlist:** clearer cards, readable two-line titles, larger selection controls, selection counts and responsive filters. A native page button beside the Watchlist heading shows/hides the account sidebar and remembers the choice. Layout controls sit above the cards on this page.
 
 **v1.1.1 fixes Wide layout scroll jumps:** existing listing and container styles remain applied during refreshes. Only changed properties and retired layout markers are updated. Previously a refresh briefly restored native narrow widths; a concurrent layout measurement could clamp the scroll position while the page was temporarily shorter. Resize handling now reacts to width changes rather than every thumbnail/list height change.
 
@@ -8,7 +10,7 @@ Standalone Tampermonkey userscript for **desktop Chrome**, extracted from the co
 
 1. Open Tampermonkey's dashboard → **Utilities → Import from file** and select [`colum-manager.user.js`](colum-manager.user.js). Alternatively, create a new script and replace its entire contents with this file, including the metadata header.
 2. Save/confirm installation, then reload the site.
-3. Use **Columns** at the bottom right. Click its heading to collapse or expand it.
+3. Use **Columns** at the bottom right, or **Watchlist layout** above the cards on the C4SPlus watchlist. Click its heading to collapse or expand it.
 
 Supported URLs:
 
@@ -43,6 +45,25 @@ The script follows newly inserted cards, filter results, body replacement and li
 **Eporner:** keep your existing Stylus theme enabled. The script handles video cards on the homepage, listings, search/profile pages and related-video sections using `.mb`/`.mbhd` wrappers with same-site video links. It overrides the supplied `32.15% !important`/`40% !important` widths, floats and mobile `display: contents !important` without changing theme colors or player controls. Important inline declarations on managed cards overcome the theme's high-specificity two-ID selectors; prior inline values are restored before rediscovery. Cards already hidden by site/theme rules stay hidden. Pagination/non-card siblings span the row, and clearfix pseudo-elements cannot create phantom cells. Photo/category cards and player layout are not converted. `xhtotal.com` appears in the attached CSS but is not included in this userscript's domain matches.
 
 Search uses virtualized cards. The adapter recognizes the complete observed React hook signature, asks React to render the loaded cards in normal flow and waits for React to remove absolute positions. Unknown virtualizers retain their native layout and show a status message. No guessed hook dispatches or forced removal of virtual positions are used. Switching a loaded search into flow can increase DOM size on very long result lists.
+
+## C4SPlus watchlist
+
+- **Show account menu / Hide account menu** is a normal button in the page HTML beside the Watchlist heading, outside the column controls' shadow root. It has `aria-expanded` and `aria-controls` and supports normal button keyboard interaction. Hiding the sidebar gives its space to the cards.
+- The account menu follows the site's desktop-visible/mobile-hidden default until you choose a state. That choice is saved independently under `colum-manager.c4splus.sidebarOpen` for the current origin and survives reloads. On smaller screens an open menu stacks above the watchlist. Reset settings resets the column controls, not this menu preference.
+- Desktop sidebar width is reduced to 210px. Source/category/search controls wrap into available space. Layout controls are docked above the cards so they do not cover thumbnails.
+- Cards have consistent surfaces, two-line titles, studio names and larger checkboxes. Selected cards are highlighted. The count says **shown on this page** and **selected**, not an inferred total for the entire watchlist.
+- Native card links, search/filter controls, selection inputs, removal actions and pagination remain in place with their original event handlers. This UI enhancement makes no watchlist API requests and does not itself select, remove or download videos.
+- Detection uses the watchlist title/card test IDs and supports the one-wrapper-per-card layout at mobile widths as well as desktop. The styling is confined to the recognized watchlist. Other pages retain the floating layout panel.
+
+The supplied `User Watchlist _ C4S+.html` and its adjacent saved CSS were tested with 12 real card wrappers at 1920/1280/900/390/320px. Tests cover sidebar visibility and reload persistence, reclaimed card width, selection counts, original control identity/handlers, docked controls and downloader coexistence. Screenshots use neutral thumbnails/titles. The inert capture cannot verify authenticated filter/removal requests or Tampermonkey installation; the saved global header also lacks its live responsive JavaScript.
+
+To include this regression:
+
+```powershell
+$env:C4S_WATCHLIST_HTML = 'C:\path\to\User Watchlist _ C4S+.html'
+# Keep its adjacent User Watchlist _ C4S+_files directory with the saved CSS.
+npm run check
+```
 
 ## Adapter design
 
