@@ -20,6 +20,9 @@ test('only explicitly supported hosts match', () => {
     assert.equal(siteFor('www.c4splus.com'), 'c4splus');
     assert.equal(siteFor('c4splus.com'), 'c4splus');
     assert.equal(siteFor('www.eporner.com'), 'eporner');
+    assert.equal(siteFor('members.adulttime.com'), 'adulttime');
+    assert.equal(siteFor('members.adulttime.com.evil.org'), null);
+    assert.equal(siteFor('adulttime.com'), null);
     assert.equal(siteFor('de.eporner.com'), 'eporner');
     assert.equal(siteFor('eporner.com.evil.org'), null);
     for (const host of ['c4splus.com.example.org', 'www.brazzers.com', 'example.com']) assert.equal(siteFor(host), null);

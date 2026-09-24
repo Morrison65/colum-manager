@@ -8,6 +8,7 @@ const assert = require('node:assert/strict');
 const root = path.resolve(__dirname, '..');
 const source = fs.readFileSync(process.env.COLUMN_MANAGER_SCRIPT || path.join(root, 'colum-manager.user.js'), 'utf8');
 const capture = process.env.BRAZZERS_HTML;
+const adulttimeCapture = process.env.ADULTTIME_HTML;
 const c4sRoot = process.env.C4S_ROOT;
 const layoutAssets = process.env.C4S_LAYOUT_ASSETS || path.join(root, 'verification');
 const hasVirtualAssets = ['InfiniteScroll-CyVLzibW.js', 'react.production.min.js', 'react-dom.production.min.js'].every(name => fs.existsSync(path.join(layoutAssets, name)));
@@ -19,12 +20,14 @@ const thumbnail = 'data:image/svg+xml,' + encodeURIComponent('<svg xmlns="http:/
 const iconPlaceholder = 'data:image/svg+xml,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24"><circle cx="12" cy="12" r="9" fill="#bb92d1"/></svg>');
 const card = (site, i) => site === 'c4splus'
     ? `<div data-testid="studio-clip-card" class="w-card"><a href="/clip/${1000+i}/sample"><span data-testid="studio-thumb-wrapper"><img src="${thumbnail}"></span>Video ${i}</a>${i%2 ? '' : '<span data-testid="clip-overlay_tag_lock">Locked</span>'}</div>`
+    : site === 'adulttime' ? `<div class="ListingGrid-ListingGridItem">${i < 20 ? `<div class="SceneThumb-WithMenu-container"><a class="SceneThumb-SceneImageLink-Link" href="/en/video/sample/${1000+i}"><img src="${thumbnail}"></a><h2>Video ${i}</h2><button class="favorite">Favorite</button></div>` : '<div style="height:250px;position:relative"></div>'}</div>`
     : site === 'eporner' ? `<div class="mb"><div class="mbimg"><div class="mbcontent"><a href="/hd-porn/test${1000+i}/sample/"><img src="${thumbnail}"></a></div></div><div class="mbunder"><p class="mbtit"><a href="/hd-porn/test${1000+i}/sample/">Video ${i}</a></p></div></div>`
     : `<div class="scene-wrapper"><article><a href="/scene/${1000+i}/sample">${i < 12 ? `<img src="${thumbnail}">` : '<span class="lazy-placeholder">&nbsp;</span>'}</a><div><a href="/scene/${1000+i}/sample">Video ${i}</a></div></article></div>`;
 const fixtureCSS = `body{margin:0;background:#141116;color:#eee;font:14px system-ui}a{color:inherit}img{display:block;width:100%;aspect-ratio:16/9;object-fit:cover}header{height:50px} .max-w-c4s-1600{max-width:1100px;margin:auto;padding:0 32px}.flex-wrap{display:flex;flex-wrap:wrap}.w-card{width:20%;padding:6px;box-sizing:border-box}.absolute{position:absolute}.scene-grid,.e1vusg2z0{display:flex;flex-wrap:wrap;margin-left:-10px}.scene-wrapper,.e1vusg2z1{width:25%;padding-left:10px;margin-bottom:10px;box-sizing:border-box;position:relative}.list-shell{max-width:1100px;margin:auto}.carousel{display:flex;overflow:auto}.carousel>*{min-width:200px}`;
 const epornerConflictCSS = `.mb,.mbhd{display:block;float:left;position:relative;width:32.15%!important;max-width:32.15%!important;margin:0 .25% 15px}.mbtit{padding:10px;color:rgb(190,190,190)}#vidresults::after{content:'';display:block;clear:both}@media(max-width:850px){#panel-rightXpornstar #vidresults.showall .mb{display:contents!important;width:40%!important;max-width:100%!important;padding:0 4px}}`;
 function markup(site) {
     const cards = Array.from({ length: 24 }, (_, i) => card(site, i)).join('');
+    if (site === 'adulttime') return `<header>Navigation</header><main id="mainContentZone"><div class="SearchListing" style="max-width:1100px;margin:auto"><button id="filter">Filter</button><div class="ListingGrid"><div><div id="listing">${cards}</div></div></div><nav class="Pagination"><a id="next" href="?page=2">Next</a></nav></div><div class="SceneCarousel">${card(site,99)}</div><div class="SearchListing"><div class="ListingGrid"><div class="ListingGrid-ListingGridItem"><a href="/en/actors/example">Actor</a></div></div></div></main>`;
     if (site === 'eporner') return `<div id="content"><header>Navigation</header><div id="panel-rightXpornstar"><div id="vidresults" class="showall">${cards}<button id="next">Next page</button></div></div></div><div class="mbphoto"><a href="/gallery/not-video/">Photo</a></div>`;
     return site === 'c4splus' ? `<header id="headerNavigationSection"></header><main class="max-w-c4s-1600"><div id="listing" class="flex-wrap">${cards}</div></main><div class="carousel">${card(site, 99)}</div>`
         : `<div id="root"><div><header>Navigation</header><div class="list-shell"><section id="List-container-123"><h1>Videos</h1><div id="listing" class="scene-grid">${cards}</div><button id="next">Next page</button></section></div><div id="promo"><button><svg></svg></button></div></div></div><section id="unrelated"><a href="/scene/12/menu">Menu link</a></section>`;
@@ -70,17 +73,25 @@ const server = http.createServer((req, res) => {
         res.end(fs.readFileSync(path.join(layoutAssets, req.url === '/react.js' ? 'react.production.min.js' : 'react-dom.production.min.js'))); return;
     }
     const host = req.headers['x-fixture-host'] || req.headers.host;
-    const site = host.startsWith('c4splus.com') ? 'c4splus' : host.includes('eporner.com') ? 'eporner' : 'brazzers';
+    const site = host.startsWith('c4splus.com') ? 'c4splus' : host.includes('eporner.com') ? 'eporner' : host === 'members.adulttime.com' ? 'adulttime' : 'brazzers';
     const epMatch = /^\/capture-eporner-(\d+)$/.exec(req.url);
     const epFile = epMatch && path.join(epornerCapture, `page-${epMatch[1]}`);
+    const adulttimePage = req.url === '/capture-adulttime';
     const watchlistPage = req.url.startsWith('/watchlist-');
     let watchlistCSS = '';
-    if (watchlistPage) {
-        const directory = path.join(path.dirname(watchlistCapture), path.basename(watchlistCapture, '.html')+'_files');
-        watchlistCSS = fs.readdirSync(directory).filter(file=>file.endsWith('.css')).map(file=>fs.readFileSync(path.join(directory,file),'utf8')).join('\n');
+    if (watchlistPage || adulttimePage) {
+        const file = adulttimePage ? adulttimeCapture : watchlistCapture;
+        const directory = path.join(path.dirname(file), path.basename(file, '.html')+'_files');
+        // Replay Adult Time's original stylesheet order (base before theme).
+        const names = adulttimePage ? [...fs.readFileSync(file,'utf8').matchAll(/<link\b[^>]*>/gi)]
+            .map(([tag]) => /rel=["']stylesheet["']/i.test(tag) && /href=["']([^"']+)["']/i.exec(tag)?.[1])
+            .filter(Boolean).map(href => path.basename(href)).filter(name => name.endsWith('.css'))
+            : fs.readdirSync(directory).filter(name=>name.endsWith('.css'));
+        watchlistCSS = names.map(name=>fs.readFileSync(path.join(directory,name),'utf8')).join('\n');
     }
+    const adulttimeBodyClass = adulttimePage ? /<body[^>]*class="([^"]*)"/i.exec(fs.readFileSync(adulttimeCapture,'utf8'))?.[1].replace(/[^\w -]/g,'') || '' : '';
     res.setHeader('Content-Type', 'text/html; charset=utf-8');
-    res.end(`<!doctype html><html><head><meta charset="utf-8"><style>${watchlistPage ? 'body{margin:0;background:#0b080f;color:#fff}' : fixtureCSS}</style><style>${watchlistCSS}</style>${req.url === '/studio-capture' ? `<style>${fs.readFileSync(path.join(layoutAssets, 'layout-tailwind.css'),'utf8')}</style>` : ''}${site === 'eporner' ? `<style>${epFile ? fs.readFileSync(epFile+'.css','utf8') : ''}\n${epornerConflictCSS}\n${epornerStyles}</style>` : ''}</head><body>${watchlistPage ? capturedMarkup(watchlistCapture) : req.url === '/studio-capture' ? capturedMarkup(studioCapture) : epFile ? capturedMarkup(epFile+'.html') : req.url === '/capture' ? capturedMarkup() : markup(site)}
+    res.end(`<!doctype html><html><head><meta charset="utf-8"><style>${watchlistPage || adulttimePage ? 'body{margin:0;background:#0b080f;color:#fff}' : fixtureCSS}</style><style>${watchlistCSS}</style>${req.url === '/studio-capture' ? `<style>${fs.readFileSync(path.join(layoutAssets, 'layout-tailwind.css'),'utf8')}</style>` : ''}${site === 'eporner' ? `<style>${epFile ? fs.readFileSync(epFile+'.css','utf8') : ''}\n${epornerConflictCSS}\n${epornerStyles}</style>` : ''}</head><body class="${adulttimeBodyClass}">${adulttimePage ? capturedMarkup(adulttimeCapture) : watchlistPage ? capturedMarkup(watchlistCapture) : req.url === '/studio-capture' ? capturedMarkup(studioCapture) : epFile ? capturedMarkup(epFile+'.html') : req.url === '/capture' ? capturedMarkup() : markup(site)}
       <script nonce="fixture">document.querySelectorAll('#c4splus-layout-control,#c4splus-local-downloader,#colum-manager-control').forEach(node=>node.remove());</script>
       ${req.url === '/virtual' ? virtualScript() : ''}
       ${req.url === '/coexist-before' ? '<script src="/downloader.js"></script>' : ''}
@@ -129,7 +140,7 @@ async function main() {
         page.on('Fetch.requestPaused', async event => {
             try {
                 const url = new URL(event.request.url);
-                if (!['c4splus.com', 'site-ma.brazzers.com', 'www.eporner.com'].includes(url.hostname)) {
+                if (!['c4splus.com', 'site-ma.brazzers.com', 'www.eporner.com', 'members.adulttime.com'].includes(url.hostname)) {
                     await page.send('Fetch.failRequest', { requestId: event.requestId, errorReason: 'BlockedByClient' }); return;
                 }
                 const response = await fetch(`http://127.0.0.1:${server.address().port}${url.pathname}`, { headers: { 'X-Fixture-Host': url.hostname } });
@@ -149,7 +160,7 @@ async function main() {
             throw Error('Timed out: ' + expression + '; page: ' + await evaluate('JSON.stringify({url:location.href,title:document.title,text:document.body?.textContent.slice(0,180)})'));
         }
         async function navigate(site, route = '/') {
-            await page.send('Page.navigate', { url: `https://${site === 'c4splus' ? 'c4splus.com' : site === 'eporner' ? 'www.eporner.com' : 'site-ma.brazzers.com'}${route}` });
+            await page.send('Page.navigate', { url: `https://${site === 'c4splus' ? 'c4splus.com' : site === 'eporner' ? 'www.eporner.com' : site === 'adulttime' ? 'members.adulttime.com' : 'site-ma.brazzers.com'}${route}` });
             await wait('!!document.querySelector("#colum-manager-control")?.shadowRoot');
             await pause(100);
         }
@@ -164,9 +175,9 @@ async function main() {
             rects.forEach((r,i)=>{if(r.width<1||r.right>bounds.right+1||r.left<bounds.left-1)throw Error('Card overflow');if(i%cols&&Math.abs(r.top-rects[i-1].top)>1)throw Error('Row gaps');if(i>=cols&&r.top<rects[i-cols].bottom-1)throw Error('Row overlap');});
             return {cols,count:cards.length,width:bounds.width,gap:parseFloat(getComputedStyle(grid).gap)};
         })()`;
-        async function scrollStability(route = '/') {
+        async function scrollStability(route = '/', site = 'c4splus') {
             await page.send('Emulation.setDeviceMetricsOverride', { width: 1920, height: 1080, deviceScaleFactor: 1, mobile: false });
-            await navigate('c4splus', route);
+            await navigate(site, route);
             await change('wide', true);
             await change('columns', 1);
             await evaluate("scrollTo(0, document.documentElement.scrollHeight-innerHeight-80)");
@@ -259,7 +270,7 @@ async function main() {
             assert.equal(await evaluate("document.querySelector('#colum-manager-control').hasAttribute('data-cm-docked')"),false);
             console.log('PASS supplied watchlist: 12 cards, 1920/1280/900/390/320px, native sidebar toggle, persistence, reclaimed width, selection count, preserved search controls and downloader coexistence');
         }
-        for (const site of ['c4splus', 'brazzers', 'eporner']) {
+        for (const site of ['c4splus', 'brazzers', 'eporner', 'adulttime']) {
             await page.send('Emulation.setDeviceMetricsOverride', { width: 1920, height: 1080, deviceScaleFactor: 1, mobile: false });
             await navigate(site);
             assert.equal((await evaluate(geometry)).count, 24);
@@ -297,6 +308,11 @@ async function main() {
             await evaluate("document.querySelector('#colum-manager-control').remove()");
             await wait("!!document.querySelector('#colum-manager-control')");
             await change('wide', false); assert.equal(await evaluate("document.querySelectorAll('[data-cm-wide]').length"), 0);
+            if (site === 'adulttime') {
+                assert.equal(await evaluate("document.querySelectorAll('.SceneCarousel [data-cm-card]').length"),0);
+                assert.equal(await evaluate("document.querySelector('a[href*=actors]').closest('[data-cm-card]')"),null);
+                assert.equal(await evaluate("document.querySelector('#colum-manager-control').shadowRoot.querySelector('#hideLocked').parentElement.hidden"),true);
+            }
             if (site === 'eporner') {
                 assert.equal(await evaluate("getComputedStyle(document.querySelector('.mbtit')).color"), 'rgb(190, 190, 190)');
                 assert.equal(await evaluate("document.querySelector('.mbphoto').hasAttribute('data-cm-card')"), false);
@@ -311,6 +327,39 @@ async function main() {
             console.log(`PASS ${site}: 1/3/4/8 columns, gaps, 1920/900/390/320px, filtering, appended cards, SPA replacement, persistence, reset, reinjection, control recovery`);
         }
         await page.send('Emulation.setDeviceMetricsOverride', { width: 1920, height: 1080, deviceScaleFactor: 1, mobile: false });
+        if (adulttimeCapture) {
+            await scrollStability('/capture-adulttime','adulttime');
+            assert.equal((await evaluate(geometry)).count,60);
+            assert.equal(await evaluate("document.querySelectorAll('[data-cm-card] .SceneThumb-WithMenu-container').length"),20);
+            await evaluate("window.nativeNext=document.querySelector('.Pagination a');window.nativeThumb=document.querySelector('.SceneThumb-SceneImageLink-Link');window.cardEvents=0;nativeThumb.addEventListener('click',e=>{e.preventDefault();cardEvents++});");
+            for (const width of [1920,1280,900,390,320]) {
+                await page.send('Emulation.setDeviceMetricsOverride',{width,height:1080,deviceScaleFactor:1,mobile:false});
+                for (const columns of [1,4,8]) {
+                    await change('columns',columns);
+                    const g=await evaluate(geometry);
+                    assert.equal(g.count,60);assert.equal(g.cols,Math.min(columns,Math.max(1,Math.floor((g.width+g.gap)/(210+g.gap)))));if(width<=390)assert.equal(g.cols,1);
+                    assert(await evaluate("[...document.querySelectorAll('[data-cm-card] img')].every(img=>{const r=img.getBoundingClientRect(),c=img.closest('[data-cm-card]').getBoundingClientRect();return !r.width || (r.left>=c.left-1 && r.right<=c.right+1)})"),'Adult Time thumbnail overflow at '+width);
+                }
+            }
+            await page.send('Emulation.setDeviceMetricsOverride',{width:1920,height:1080,deviceScaleFactor:1,mobile:false});
+            await change('columns',4);await change('gap',24);
+            assert.equal((await evaluate(geometry)).gap,24);
+            await change('wide',false);assert.equal(await evaluate("document.querySelectorAll('[data-cm-wide]').length"),0);
+            await change('wide',true);
+            assert(await evaluate("document.querySelector('.Pagination a')===nativeNext && document.querySelector('.SceneThumb-SceneImageLink-Link')===nativeThumb"));
+            await evaluate("nativeThumb.click()");assert.equal(await evaluate('cardEvents'),1);
+            await evaluate("const cards=[...document.querySelectorAll('[data-cm-card]')];cards[20].replaceChildren(cards[0].firstElementChild.cloneNode(true));cards[0].parentElement.append(cards[0].cloneNode(true))");
+            await wait("document.querySelectorAll('[data-cm-card]').length===61");
+            assert.equal((await evaluate(geometry)).count,61);
+            await evaluate("const grid=document.querySelector('[data-cm-grid]');grid.replaceWith(grid.cloneNode(true));history.pushState({},'', '?sortBy=all_scenes_latest_desc')");
+            await pause(100);assert.equal((await evaluate(geometry)).count,61);
+            await evaluate("const remainingGrid=document.querySelector('[data-cm-grid]');[...remainingGrid.children].slice(1).forEach(n=>n.remove())");
+            await wait("document.querySelectorAll('[data-cm-card]').length===1");
+            assert.equal((await evaluate(geometry)).count,1);
+            await evaluate("document.querySelector('[data-cm-grid]').innerHTML=''");
+            await wait("!document.querySelector('[data-cm-grid]')");
+            console.log('PASS supplied Adult Time: 60 slots (20 loaded/40 lazy), saved styles, 1/4/8 columns at 1920/1280/900/390/320px, gap/wide toggles, original links/pagination, lazy loading, appended cards, replacement and single/empty lists');
+        }
         await navigate('c4splus'); await change('columns', 7);
         await navigate('brazzers');
         assert.equal(await evaluate("document.querySelector('#colum-manager-control').shadowRoot.querySelector('#columns').value"), '3');
@@ -403,6 +452,8 @@ async function main() {
             console.log('PASS paired scripts: both injection orders, only manager owns layout/filtering, Wide off restores native width, downloader alone retains native layout');
         }
         if (hasVirtualAssets) {
+            // Keep the pagination sentinel below the initial viewport regardless of earlier preferences.
+            await navigate('c4splus');await change('columns',3);await change('hideLocked',false);
             await navigate('c4splus', '/virtual');
             await wait("document.querySelectorAll('[data-cm-card]').length>=60");
             assert.equal((await evaluate(geometry)).count, 60);

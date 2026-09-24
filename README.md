@@ -1,6 +1,8 @@
 # colum-manager
 
-Standalone Tampermonkey userscript for **desktop Chrome**, extracted from the column controls in `c4splus-downloader`. Version **1.3.0**, supporting C4SPlus, Brazzers and Eporner. The repository name intentionally follows the requested spelling.
+Standalone Tampermonkey userscript for **desktop Chrome**, extracted from the column controls in `c4splus-downloader`. Version **1.4.0**, supporting C4SPlus, Brazzers, Eporner and Adult Time. The repository name intentionally follows the requested spelling.
+
+**v1.4.0 adds Adult Time video listings** on `members.adulttime.com`, including the supplied Video Updates page. Columns, Gap and Wide layout use independent preferences for that origin.
 
 **v1.3.0 completes the split from C4SPlus Downloader v1.11.0:** Colum Manager is the sole owner of listing layout. Update both userscripts and reload open tabs. Saved downloader columns and Hide locked preferences are imported once; existing Colum Manager preferences take priority.
 
@@ -14,10 +16,13 @@ Standalone Tampermonkey userscript for **desktop Chrome**, extracted from the co
 2. Save/confirm installation, then reload the site.
 3. Use **Columns** at the bottom right, or **Watchlist layout** above the cards on the C4SPlus watchlist. Click its heading to collapse or expand it.
 
+The metadata name and namespace remain unchanged so importing this version updates the existing script. The panel shows **Columns · Adult Time** on the new site.
+
 Supported URLs:
 
 - `https://c4splus.com/*`
 - `https://www.c4splus.com/*`
+- `https://members.adulttime.com/*`, including `/en/videos/?sortBy=all_scenes_latest_desc&fromSeeAll=1`
 - `https://site-ma.brazzers.com/*`, including `/scenes?addon=5951&sortby=rating&tags=448`
 - `https://eporner.com/*` and `https://*.eporner.com/*`, including `www` and language subdomains. The requested “eponer.com” is interpreted as **eporner.com**, matching the attached CSS; the misspelled host is not matched.
 
@@ -34,7 +39,7 @@ No runtime dependencies, downloads, API requests or external resources are added
 | Hide locked | C4SPlus only, off by default. Hides cards with the site's lock badge and closes the gaps. |
 | Reset settings | Restores the defaults above for the current origin. |
 
-Preferences are saved in localStorage under `colum-manager.settings.v1`. Brazzers and C4SPlus are independent. The `www` and bare C4SPlus origins also have separate browser storage. If storage is blocked, adjustments still work for the current document and the panel explains that they will not persist.
+Preferences are saved in localStorage under `colum-manager.settings.v1`. Each supported origin has independent preferences. The `www` and bare C4SPlus origins also have separate browser storage. If storage is blocked, adjustments still work for the current document and the panel explains that they will not persist.
 
 The script follows newly inserted cards, filter results, body replacement and list resizing. It keeps existing cards, links, event handlers, thumbnail styling and pagination in place. It adjusts listing layout rather than recreating cards.
 
@@ -59,7 +64,17 @@ The spacing controls replace the downloader's fixed spacing policy; they do not 
 
 **Eporner:** keep your existing Stylus theme enabled. The script handles video cards on the homepage, listings, search/profile pages and related-video sections using `.mb`/`.mbhd` wrappers with same-site video links. It overrides the supplied `32.15% !important`/`40% !important` widths, floats and mobile `display: contents !important` without changing theme colors or player controls. Important inline declarations on managed cards overcome the theme's high-specificity two-ID selectors; prior inline values are restored before rediscovery. Cards already hidden by site/theme rules stay hidden. Pagination/non-card siblings span the row, and clearfix pseudo-elements cannot create phantom cells. Photo/category cards and player layout are not converted. `xhtotal.com` appears in the attached CSS but is not included in this userscript's domain matches.
 
-Search uses virtualized cards. The adapter recognizes the complete observed React hook signature, asks React to render the loaded cards in normal flow and waits for React to remove absolute positions. Unknown virtualizers retain their native layout and show a status message. No guessed hook dispatches or forced removal of virtual positions are used. Switching a loaded search into flow can increase DOM size on very long result lists.
+**Adult Time:** manages video items inside `.SearchListing .ListingGrid`, identified by the site's named card classes and same-host language-prefixed video links. All card slots in an identified video list are retained, including lazy placeholders; native image links, menus, pagination and filters remain in place. Actor lists and recognized carousels stay unchanged. Wide layout releases width caps only between the card grid and its search listing, leaving the page navigation alone. The attached listing is already fluid in places, so Wide layout may make little difference there. Hide locked and Hide promotions remain specific to their existing sites.
+
+The saved Adult Time HTML and adjacent CSS were replayed with **60 slots (20 loaded cards and 40 lazy placeholders)** at 1920/1280/900/390/320px. Checks cover 1/4/8 maximum columns, gaps, wide toggling, thumbnail/card bounds, native links and pagination node identity, lazy slot population, inserted cards, replaced lists, single/empty results and deep-scroll stability. Original capture scripts and remote media are blocked; the test simulates lazy population and cannot verify authenticated pagination requests or live preview playback.
+
+```powershell
+$env:ADULTTIME_HTML = 'C:\path\to\Video Updates _ Adult Time.html'
+# Keep the adjacent Video Updates _ Adult Time_files folder containing saved CSS.
+npm run check
+```
+
+C4SPlus search uses virtualized cards. The adapter recognizes the complete observed React hook signature, asks React to render the loaded cards in normal flow and waits for React to remove absolute positions. Unknown virtualizers retain their native layout and show a status message. No guessed hook dispatches or forced removal of virtual positions are used. Switching a loaded search into flow can increase DOM size on very long result lists.
 
 ## C4SPlus watchlist
 
@@ -86,6 +101,7 @@ Shared controls, validation, storage, responsive sizing, observers and layout CS
 
 - C4SPlus uses clip-card test IDs and listing containers; older responsive width wrappers are supported. Carousel tracks are excluded.
 - Brazzers discovers repeated scene cards inside `section[id^="List-container-"]` using same-site numeric scene URLs. Two links to the same scene identify thumbnail/title pairs even before lazy images load. Generated styling classes are not required for multi-card detection. The observed `e1vusg2z0` component marker additionally identifies a single-card result.
+- Adult Time groups named `ListingGrid-ListingGridItem` wrappers within a recognized video search listing, including its unpopulated lazy slots, without relying on generated `styles_*` hashes.
 - Eporner groups `.mb`/`.mbhd` video cards by their direct parent. It accepts the site's `/hd-porn/…/` and `/video-…/` URL patterns and excludes photo cards, nested card internals and recognized carousel tracks.
 - To add another site, add its exact metadata match and hostname, implement its `groups()` adapter returning `Map<Element, Element[]>`, and add narrowly scoped CSS if necessary. Never enable all-domain injection as a substitute for an adapter.
 

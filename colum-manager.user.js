@@ -1,11 +1,12 @@
 // ==UserScript==
 // @name         Colum Manager - C4SPlus, Brazzers and Eporner
 // @namespace    local.colum-manager
-// @version      1.3.0
+// @version      1.4.0
 // @description  Adjustable thumbnail columns, spacing and wide listings with independent site preferences.
 // @match        https://c4splus.com/*
 // @match        https://www.c4splus.com/*
 // @match        https://site-ma.brazzers.com/*
+// @match        https://members.adulttime.com/*
 // @match        https://eporner.com/*
 // @match        https://*.eporner.com/*
 // @run-at       document-idle
@@ -17,7 +18,7 @@
 /* global globalThis:readonly, module:readonly */
 (function () {
     'use strict';
-    const VERSION = '1.3.0';
+    const VERSION = '1.4.0';
     const STORAGE_KEY = 'colum-manager.settings.v1';
     const DEFAULTS = { columns: 3, gap: 8, wide: true, hidePromos: true, hideLocked: false };
     function cleanSettings(value) {
@@ -37,6 +38,7 @@
     function siteFor(hostname) {
         if (['c4splus.com', 'www.c4splus.com'].includes(hostname)) return 'c4splus';
         if (hostname === 'site-ma.brazzers.com') return 'brazzers';
+        if (hostname === 'members.adulttime.com') return 'adulttime';
         if (hostname === 'eporner.com' || hostname.endsWith('.eporner.com')) return 'eporner';
         return null;
     }
@@ -174,12 +176,33 @@
         }
         return groupsFrom(cards);
     }
+    function adulttimeGroups() {
+        const groups = new Map();
+        for (const listing of document.querySelectorAll('.SearchListing .ListingGrid')) {
+            if (listing.closest('[aria-roledescription="carousel"], .swiper-wrapper, .slick-slider, .SceneCarousel')) continue;
+            const candidates = groupsFrom([...listing.querySelectorAll('.ListingGrid-ListingGridItem')]
+                .filter(card => card.closest('.ListingGrid') === listing));
+            for (const [grid, cards] of candidates) {
+                // Once a video listing is identified, retain empty lazy slots too.
+                // Dropping them would change pagination and intersection behavior.
+                const video = cards.some(card => [...card.querySelectorAll('a.SceneThumb-SceneImageLink-Link[href]')].some(link => {
+                    try {
+                        const url = new URL(link.getAttribute('href'), location.href);
+                        return url.hostname === location.hostname && /^\/[a-z]{2}\/video\/[^/]+/.test(url.pathname);
+                    } catch { return false; }
+                }));
+                if (video) groups.set(grid, cards);
+            }
+        }
+        return groups;
+    }
     // Adding a site requires only a hostname match, an adapter and scoped CSS.
     // Shared controls, persistence, sizing and lifecycle do not depend on the site.
     const adapters = {
         c4splus: { label: 'C4SPlus', groups: c4sGroups, virtualDispatch: searchLayoutDispatch },
         brazzers: { label: 'Brazzers', groups: brazzersGroups },
-        eporner: { label: 'Eporner', groups: epornerGroups }
+        eporner: { label: 'Eporner', groups: epornerGroups },
+        adulttime: { label: 'Adult Time', groups: adulttimeGroups }
     };
     const adapter = adapters[site];
     const style = document.createElement('style');
@@ -423,6 +446,12 @@
         if (site === 'c4splus') {
             for (let node = grid.parentElement; node && node !== document.body; node = node.parentElement) {
                 if ([...node.classList].some(name => /^max-w-c4s-\d+$/.test(name))) { mark(node, 'data-cm-wide'); break; }
+            }
+        } else if (site === 'adulttime') {
+            const listing = grid.closest('.SearchListing');
+            for (let node = grid.parentElement; node && listing?.contains(node); node = node.parentElement) {
+                mark(node, 'data-cm-wide');
+                if (node === listing) break;
             }
         } else if (site === 'eporner') {
             for (let node = grid.parentElement; node && node !== document.body; node = node.parentElement) {
