@@ -1,6 +1,8 @@
 # colum-manager
 
-Standalone Tampermonkey userscript for **desktop Chrome**, extracted from the column controls in `c4splus-downloader`. Version **1.2.0**, supporting C4SPlus, Brazzers and Eporner. The repository name intentionally follows the requested spelling.
+Standalone Tampermonkey userscript for **desktop Chrome**, extracted from the column controls in `c4splus-downloader`. Version **1.3.0**, supporting C4SPlus, Brazzers and Eporner. The repository name intentionally follows the requested spelling.
+
+**v1.3.0 completes the split from C4SPlus Downloader v1.11.0:** Colum Manager is the sole owner of listing layout. Update both userscripts and reload open tabs. Saved downloader columns and Hide locked preferences are imported once; existing Colum Manager preferences take priority.
 
 **v1.2.0 improves the C4SPlus watchlist:** clearer cards, readable two-line titles, larger selection controls, selection counts and responsive filters. A native page button beside the Watchlist heading shows/hides the account sidebar and remembers the choice. Layout controls sit above the cards on this page.
 
@@ -40,7 +42,20 @@ The script follows newly inserted cards, filter results, body replacement and li
 
 **Brazzers:** the supplied wide-layout and promotion-hiding CSS is incorporated. Listing width follows the detected section's ancestors, avoiding fragile numbered children. Empty side gutters get the original 2% / 96% / 2% allocation where that structure exists. You can disable your old Stylus rule to let the new toggles control these features; if you leave it enabled, its own hiding/widening remains when a toggle is off. Other unrelated site styling stays in place.
 
-**C4SPlus:** works standalone or alongside the existing downloader. First use imports its saved columns and Hide locked preference. When both run, this script hides the downloader's old layout toolbar and synchronizes its two layout settings. Download and playback controls remain available. Coexistence was tested against the local downloader **v1.10.2**, in both injection orders. Its existing widening still applies when this script's Wide layout is off. To return to only the downloader's layout, disable this userscript and reload.
+**C4SPlus:** works independently or alongside [C4SPlus Downloader v1.11.0](https://github.com/Morrison65/c4splus-downloader). Update both scripts together and reload: the downloader no longer injects column controls, layout styles, observers or a React layout adapter. Colum Manager imports the legacy `c4splus.layout.columns` and `c4splus.layout.hideLocked` keys only when its own settings are absent, immediately saves the imported preferences, and never writes those legacy keys. Existing manager settings and the account-menu preference are preserved. Removing/turning off the downloader does not affect layout controls; removing Colum Manager and reloading restores native listing layout. Older downloaders still own layout and should be upgraded; the old toolbar synchronization bridge has been removed.
+
+All former downloader layout capabilities are handled here:
+
+| Downloader capability | Colum Manager replacement |
+| --- | --- |
+| Saved 1–8 columns, default 3, responsive minimum width | Columns, with available width and gap included in fitting |
+| Fixed 8px/12px spacing, reduced card/side padding and outer margins | Adjustable Gap, padding-free grid cards, and Wide layout with 2% C4SPlus side gutters; Wide off restores native container width |
+| Hide locked with closed gaps and late lock badges | Hide locked, preserving native cards and automatically following badge changes |
+| Studio/direct cards, wrapped search cards, older width classes | C4SPlus adapter; carousels stay native |
+| Guarded React virtualizer, scrolling pagination and filter replacement | Same strict adapter, now owned and tested here; unknown virtualizers retain native positions and disable unavailable controls |
+| Dynamic lists, resize, navigation, UI recovery and storage failures | Shared observers, responsive sizing, recovered controls and session-only fallback |
+
+The spacing controls replace the downloader's fixed spacing policy; they do not reproduce its exact pixel margins. Search/render adapter tests and historical analysis have moved here, and the former separate layout browser harnesses are consolidated into `test/browser.cjs`. Download, recovery, playback, notifications and rate-limit handling remain in the downloader.
 
 **Eporner:** keep your existing Stylus theme enabled. The script handles video cards on the homepage, listings, search/profile pages and related-video sections using `.mb`/`.mbhd` wrappers with same-site video links. It overrides the supplied `32.15% !important`/`40% !important` widths, floats and mobile `display: contents !important` without changing theme colors or player controls. Important inline declarations on managed cards overcome the theme's high-specificity two-ID selectors; prior inline values are restored before rediscovery. Cards already hidden by site/theme rules stay hidden. Pagination/non-card siblings span the row, and clearfix pseudo-elements cannot create phantom cells. Photo/category cards and player layout are not converted. `xhtotal.com` appears in the attached CSS but is not included in this userscript's domain matches.
 
@@ -96,12 +111,14 @@ Optional local integration checks:
 $env:BRAZZERS_HTML = 'C:\path\to\Brazzers Videos - Best HD Porn Movies & High Quality Sex Clips.html'
 $env:C4S_ROOT = 'C:\path\to\c4splus-downloader'
 $env:C4S_STUDIO_HTML = 'C:\path\to\saved-studio-listing.html'
+# Optional override; defaults to this repository's ignored verification directory.
+$env:C4S_LAYOUT_ASSETS = 'C:\path\to\layout-assets'
 npm run check
 ```
 
-`C4S_ROOT` needs the actual userscript and its existing `verification/InfiniteScroll-CyVLzibW.js`, `react.production.min.js`, and `react-dom.production.min.js`. These optional checks exercise downloader coexistence and the captured production virtualizer with React, card events and two further pages of results. Private captures and vendor bundles are not copied into this repository.
+`C4S_ROOT` needs only the actual downloader userscript and enables paired-script checks in both injection orders plus a downloader-only native-layout check. Search tests run independently of that repo when `verification/` (or `C4S_LAYOUT_ASSETS`) contains `InfiniteScroll-CyVLzibW.js`, `react.production.min.js` and `react-dom.production.min.js` (React 18.3.1). The studio capture additionally needs `layout-tailwind.css` in that directory. The local copies have been transferred into this project's ignored verification directory; private captures and vendor bundles are not committed. The search test checks native card events, locked filtering and two further pages of results.
 
-The Wide layout regression scrolls deep into a listing and triggers unrelated page mutations while measuring container geometry during refreshes. It fails on v1.1.0 (1905px briefly contracts to 1164px and scrolling can reset to zero) and passes on v1.1.1. It also runs with the saved C4SPlus studio markup and captured stylesheet when `C4S_STUDIO_HTML` and `C4S_ROOT` are set, and with the actual downloader in both injection orders. The reported studio 82095 URL returned the logged-out landing page in the isolated browser, so authenticated live verification of that exact filtered listing is not claimed.
+The Wide layout regression scrolls deep into a listing and triggers unrelated page mutations while measuring container geometry during refreshes. It fails on v1.1.0 (1905px briefly contracts to 1164px and scrolling can reset to zero) and passes on v1.1.1. It also runs with the saved C4SPlus studio markup and captured stylesheet when `C4S_STUDIO_HTML` and the local layout stylesheet are available, and with the actual downloader in both injection orders. The reported studio 82095 URL returned the logged-out landing page in the isolated browser, so authenticated live verification of that exact filtered listing is not claimed.
 
 ## Releases
 

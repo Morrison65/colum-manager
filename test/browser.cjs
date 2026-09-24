@@ -9,6 +9,8 @@ const root = path.resolve(__dirname, '..');
 const source = fs.readFileSync(process.env.COLUMN_MANAGER_SCRIPT || path.join(root, 'colum-manager.user.js'), 'utf8');
 const capture = process.env.BRAZZERS_HTML;
 const c4sRoot = process.env.C4S_ROOT;
+const layoutAssets = process.env.C4S_LAYOUT_ASSETS || path.join(root, 'verification');
+const hasVirtualAssets = ['InfiniteScroll-CyVLzibW.js', 'react.production.min.js', 'react-dom.production.min.js'].every(name => fs.existsSync(path.join(layoutAssets, name)));
 const studioCapture = process.env.C4S_STUDIO_HTML;
 const watchlistCapture = process.env.C4S_WATCHLIST_HTML;
 const epornerCapture = process.env.EPORNER_CAPTURE;
@@ -39,7 +41,7 @@ function capturedMarkup(filename = capture) {
         .replace(/<img\b[^>]*>/gi, tag => tag.replace(/\s(?:src|srcset)="[^"]*"/gi, '').replace('<img', `<img src="${/cams\.svg|overlay-c4s|clip-persistent-overlay_image/.test(tag) ? iconPlaceholder : thumbnail}"`));
 }
 function virtualScript() {
-    const raw = fs.readFileSync(path.join(c4sRoot, 'verification/InfiniteScroll-CyVLzibW.js'), 'utf8');
+    const raw = fs.readFileSync(path.join(layoutAssets, 'InfiniteScroll-CyVLzibW.js'), 'utf8');
     const code = raw.slice(raw.indexOf('function ee('), raw.indexOf('function de('));
     assert(code.startsWith('function ee(') && code.includes('function te('), 'Unknown captured virtualizer');
     return `<script src="/react.js"></script><script src="/react-dom.js"></script><script nonce="fixture">
@@ -65,7 +67,7 @@ const server = http.createServer((req, res) => {
     if (req.url === '/downloader.js') { res.setHeader('Content-Type', 'application/javascript'); res.end(fs.readFileSync(path.join(c4sRoot, 'c4splus-download.user.js'))); return; }
     if (['/react.js', '/react-dom.js'].includes(req.url)) {
         res.setHeader('Content-Type', 'application/javascript');
-        res.end(fs.readFileSync(path.join(c4sRoot, 'verification', req.url === '/react.js' ? 'react.production.min.js' : 'react-dom.production.min.js'))); return;
+        res.end(fs.readFileSync(path.join(layoutAssets, req.url === '/react.js' ? 'react.production.min.js' : 'react-dom.production.min.js'))); return;
     }
     const host = req.headers['x-fixture-host'] || req.headers.host;
     const site = host.startsWith('c4splus.com') ? 'c4splus' : host.includes('eporner.com') ? 'eporner' : 'brazzers';
@@ -78,10 +80,11 @@ const server = http.createServer((req, res) => {
         watchlistCSS = fs.readdirSync(directory).filter(file=>file.endsWith('.css')).map(file=>fs.readFileSync(path.join(directory,file),'utf8')).join('\n');
     }
     res.setHeader('Content-Type', 'text/html; charset=utf-8');
-    res.end(`<!doctype html><html><head><meta charset="utf-8"><style>${watchlistPage ? 'body{margin:0;background:#0b080f;color:#fff}' : fixtureCSS}</style><style>${watchlistCSS}</style>${req.url === '/studio-capture' ? `<style>${fs.readFileSync(path.join(c4sRoot, 'verification/layout-tailwind.css'),'utf8')}</style>` : ''}${site === 'eporner' ? `<style>${epFile ? fs.readFileSync(epFile+'.css','utf8') : ''}\n${epornerConflictCSS}\n${epornerStyles}</style>` : ''}</head><body>${watchlistPage ? capturedMarkup(watchlistCapture) : req.url === '/studio-capture' ? capturedMarkup(studioCapture) : epFile ? capturedMarkup(epFile+'.html') : req.url === '/capture' ? capturedMarkup() : markup(site)}
+    res.end(`<!doctype html><html><head><meta charset="utf-8"><style>${watchlistPage ? 'body{margin:0;background:#0b080f;color:#fff}' : fixtureCSS}</style><style>${watchlistCSS}</style>${req.url === '/studio-capture' ? `<style>${fs.readFileSync(path.join(layoutAssets, 'layout-tailwind.css'),'utf8')}</style>` : ''}${site === 'eporner' ? `<style>${epFile ? fs.readFileSync(epFile+'.css','utf8') : ''}\n${epornerConflictCSS}\n${epornerStyles}</style>` : ''}</head><body>${watchlistPage ? capturedMarkup(watchlistCapture) : req.url === '/studio-capture' ? capturedMarkup(studioCapture) : epFile ? capturedMarkup(epFile+'.html') : req.url === '/capture' ? capturedMarkup() : markup(site)}
+      <script nonce="fixture">document.querySelectorAll('#c4splus-layout-control,#c4splus-local-downloader,#colum-manager-control').forEach(node=>node.remove());</script>
       ${req.url === '/virtual' ? virtualScript() : ''}
       ${req.url === '/coexist-before' ? '<script src="/downloader.js"></script>' : ''}
-      <script src="/script.js"></script>${req.url === '/coexist-after' || req.url === '/watchlist-coexist' ? '<script src="/downloader.js"></script>' : ''}</body></html>`);
+      ${req.url === '/downloader-only' ? '<script src="/downloader.js"></script>' : '<script src="/script.js"></script>'}${req.url === '/coexist-after' || req.url === '/watchlist-coexist' ? '<script src="/downloader.js"></script>' : ''}</body></html>`);
 });
 const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
 async function connect(url) {
@@ -187,8 +190,30 @@ async function main() {
             assert(result.width-result.minWidth<=1, `Wide container temporarily collapsed during layout reads (${route}): ${JSON.stringify(result)}`);
             console.log(`PASS scroll stability ${route}: ${result.start}px stays fixed through repeated page mutations`);
         }
+        await page.send('Emulation.setDeviceMetricsOverride', { width: 1920, height: 1080, deviceScaleFactor: 1, mobile: false });
+        // Import preferences before the downloader ever runs, then own them independently.
+        await navigate('c4splus');
+        await evaluate("localStorage.removeItem('colum-manager.settings.v1');localStorage.setItem('c4splus.layout.columns','6');localStorage.setItem('c4splus.layout.hideLocked','true')");
+        await navigate('c4splus');
+        assert.equal((await evaluate(geometry)).cols, 6); assert.equal((await evaluate(geometry)).count, 12);
+        assert.equal(await evaluate("JSON.parse(localStorage.getItem('colum-manager.settings.v1')).columns"),6);
+        await evaluate("localStorage.setItem('c4splus.layout.columns','2');localStorage.setItem('c4splus.layout.hideLocked','false')");
+        await navigate('c4splus');
+        assert.equal((await evaluate(geometry)).cols, 6); assert.equal((await evaluate(geometry)).count, 12);
+        await change('columns',4); await change('hideLocked',false);
+        assert.equal(await evaluate("localStorage.getItem('c4splus.layout.columns')"),'2');
+        await evaluate("document.querySelector('#colum-manager-control').shadowRoot.querySelector('#reset').click()");
+        console.log('PASS legacy import: preferences migrated once, saved immediately, existing manager settings win, legacy keys left untouched');
         await scrollStability();
-        if (studioCapture) await scrollStability('/studio-capture');
+        if (studioCapture) {
+            await scrollStability('/studio-capture');
+            await change('columns',4);
+            assert.equal((await evaluate(geometry)).cols,4); assert.equal((await evaluate(geometry)).count,20);
+            const unlocked=await evaluate("[...document.querySelectorAll('[data-cm-card]')].filter(c=>!c.querySelector('[data-testid=clip-overlay_tag_lock]')).length");
+            await change('hideLocked',true); assert.equal((await evaluate(geometry)).count,unlocked);
+            await change('hideLocked',false); assert.equal((await evaluate(geometry)).count,20);
+            console.log('PASS supplied studio: 20 cards, columns and locked filtering with closed gaps');
+        }
         if (watchlistCapture) {
             await navigate('c4splus', '/watchlist-capture');
             await change('columns', 3);
@@ -246,6 +271,10 @@ async function main() {
             if (site === 'c4splus') {
                 assert.equal(await evaluate("document.querySelector('.carousel').hasAttribute('data-cm-grid')"), false);
                 await change('hideLocked', true); assert.equal((await evaluate(geometry)).count, 12);
+                await evaluate("document.querySelector('[data-cm-card]:not(:has([data-testid=clip-overlay_tag_lock]))').insertAdjacentHTML('beforeend','<span data-testid=clip-overlay_tag_lock>Locked</span>')");
+                assert.equal((await evaluate(geometry)).count,11);
+                await evaluate("document.querySelectorAll('[data-testid=clip-overlay_tag_lock]')[1].remove()");
+                assert.equal((await evaluate(geometry)).count,12);
                 await change('hideLocked', false);
             } else if (site === 'brazzers') {
                 assert.equal(await evaluate("getComputedStyle(document.querySelector('#promo')).display"), 'none');
@@ -306,7 +335,15 @@ async function main() {
         await evaluate("document.querySelectorAll('#listing > *').forEach((c,i)=>{c.classList.add('absolute');c.style.top=(i*220)+'px'});");
         await wait("!document.querySelector('[data-cm-grid]')");
         assert(await evaluate("document.querySelector('#colum-manager-control').shadowRoot.querySelector('#status').textContent.includes('native positions')"));
-        console.log('PASS unknown virtualizer: native positions retained');
+        assert(await evaluate("['columns','gap','wide','hideLocked'].every(id=>document.querySelector('#colum-manager-control').shadowRoot.getElementById(id).disabled)"));
+        await evaluate("document.querySelectorAll('#listing > *').forEach(c=>{c.classList.remove('absolute');c.style.removeProperty('top')})");
+        await wait("!!document.querySelector('[data-cm-grid]')");
+        assert(await evaluate("!document.querySelector('#colum-manager-control').shadowRoot.getElementById('columns').disabled"));
+        console.log('PASS unknown virtualizer: native positions retained, unavailable controls disabled and restored on flow lists');
+        await evaluate("document.querySelectorAll('#listing > *').forEach(c=>{c.removeAttribute('data-testid');c.className='lg:w-1/5'})");
+        await pause(100);
+        assert.equal((await evaluate(geometry)).count,24);
+        console.log('PASS older responsive width wrappers without clip-card test IDs');
         if (capture) {
             await navigate('brazzers', '/capture');
             assert.equal((await evaluate(geometry)).count, 24);
@@ -346,14 +383,26 @@ async function main() {
             for (const route of ['/coexist-before', '/coexist-after']) {
                 await scrollStability(route);
                 await navigate('c4splus', route);
-                await wait("!!document.querySelector('#c4splus-layout-control')");
+                await pause(1700);
+                assert.equal(await evaluate("document.querySelectorAll('#c4splus-layout-control,[data-c4s-layout-grid],[data-c4s-layout-card],[data-c4s-layout-padding],[data-c4s-layout-container]').length"),0);
                 await change('columns', 4); await change('gap', 20); await change('hideLocked', true);
                 assert.equal((await evaluate(geometry)).cols, 4); assert.equal((await evaluate(geometry)).count, 12);
-                assert.equal(await evaluate("getComputedStyle(document.querySelector('#c4splus-layout-control')).display"), 'none');
-                assert.equal(await evaluate("document.querySelector('#c4splus-layout-control').shadowRoot.querySelector('input').value"), '4');
+                const wideWidth=(await evaluate(geometry)).width;
+                await change('wide',false);
+                assert((await evaluate(geometry)).width < wideWidth-100, 'Wide off must restore native container width with downloader running');
+                await change('wide',true);
                 await change('hideLocked', false); assert.equal((await evaluate(geometry)).count, 24);
             }
-            console.log('PASS actual downloader coexistence: both injection orders, one visible toolbar, synchronized columns and locked filtering');
+            await page.send('Page.navigate',{url:'https://c4splus.com/downloader-only'});
+            await wait("location.pathname==='/downloader-only' && !!globalThis[Symbol.for('local.c4splus.downloader.instance')]");
+            await pause(1700);
+            assert.equal(await evaluate("document.querySelectorAll('#colum-manager-control,#c4splus-layout-control,[data-cm-grid],[data-c4s-layout-grid]').length"),0);
+            assert.equal(await evaluate("getComputedStyle(document.querySelector('#listing')).display"),'flex');
+            assert.equal(await evaluate("getComputedStyle(document.querySelector('.max-w-c4s-1600')).maxWidth"),'1100px');
+            assert.equal(await evaluate("document.querySelectorAll('[data-testid=clip-overlay_tag_lock]').length"),12);
+            console.log('PASS paired scripts: both injection orders, only manager owns layout/filtering, Wide off restores native width, downloader alone retains native layout');
+        }
+        if (hasVirtualAssets) {
             await navigate('c4splus', '/virtual');
             await wait("document.querySelectorAll('[data-cm-card]').length>=60");
             assert.equal((await evaluate(geometry)).count, 60);
@@ -374,7 +423,20 @@ async function main() {
             await evaluate("scrollTo(0,0);renderSearch('new-filter')");
             await wait("document.querySelectorAll('[data-cm-card]').length===60");
             assert.equal((await evaluate(geometry)).count, 30);
-            console.log('PASS captured production C4SPlus virtualizer with React: columns, card events, locked filtering, two additional pages, filter replacement');
+            await change('hideLocked',false);
+            for (const width of [1920,900,390]) {
+                await page.send('Emulation.setDeviceMetricsOverride',{width,height:1080,deviceScaleFactor:1,mobile:false});
+                await change('columns',8);
+                const result=await evaluate(geometry);
+                // Resizing can expose the sentinel and legitimately load another page.
+                assert(result.count>=60 && result.count<=100); assert(result.cols<=8); if(width===390)assert.equal(result.cols,1);
+                const indices=await evaluate("[...document.querySelectorAll('[data-cm-card]')].map(c=>Number(c.dataset.index))");
+                assert.deepEqual(indices,Array.from({length:indices.length},(_,i)=>i));
+                assert(await evaluate("[...document.querySelectorAll('[data-cm-card] img')].every(img=>{const r=img.getBoundingClientRect();return Math.abs(r.width/r.height-16/9)<.02})"));
+                await evaluate("scrollTo(0,0)");
+                assert.equal(await evaluate('scrollY'),0);
+            }
+            console.log('PASS captured production C4SPlus virtualizer with React: responsive columns at 1920/900/390px, card order/events, thumbnail aspect ratios, locked filtering, two additional pages, filter replacement');
         }
         console.log('Browser checks complete. Extension installation and authenticated live sessions were not exercised.');
     } finally {

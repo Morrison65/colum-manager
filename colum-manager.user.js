@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Colum Manager - C4SPlus, Brazzers and Eporner
 // @namespace    local.colum-manager
-// @version      1.2.0
+// @version      1.3.0
 // @description  Adjustable thumbnail columns, spacing and wide listings with independent site preferences.
 // @match        https://c4splus.com/*
 // @match        https://www.c4splus.com/*
@@ -17,7 +17,7 @@
 /* global globalThis:readonly, module:readonly */
 (function () {
     'use strict';
-    const VERSION = '1.2.0';
+    const VERSION = '1.3.0';
     const STORAGE_KEY = 'colum-manager.settings.v1';
     const DEFAULTS = { columns: 3, gap: 8, wide: true, hidePromos: true, hideLocked: false };
     function cleanSettings(value) {
@@ -85,6 +85,8 @@
         if (!saved && site === 'c4splus') {
             settings = cleanSettings({ ...settings, columns: Number(localStorage.getItem('c4splus.layout.columns')),
                 hideLocked: localStorage.getItem('c4splus.layout.hideLocked') === 'true' });
+            // Import once; later reloads and edits belong only to this script.
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(settings));
         }
     } catch { storageAvailable = false; }
     const sidebarKey = 'colum-manager.c4splus.sidebarOpen';
@@ -196,7 +198,6 @@
       html[data-colum-manager="c4splus"] [data-cm-wide] {padding-left:2%!important;padding-right:2%!important}
       html[data-colum-manager="c4splus"] [data-cm-card] [data-testid$="-thumb-wrapper"] {display:block;position:relative;aspect-ratio:16/9;max-width:100%;overflow:hidden}
       html[data-colum-manager="c4splus"] [data-cm-grid="flow"][data-cm-hide-locked] > [data-cm-card]:has([data-testid="clip-overlay_tag_lock"]) {display:none!important}
-      html[data-colum-manager="c4splus"] #c4splus-layout-control {display:none!important}
       html[data-colum-manager="c4splus"] [data-cm-watchlist-article] {min-width:0!important}
       html[data-colum-manager="c4splus"] [data-cm-watchlist] [data-testid="watchlist-title"] {font-size:clamp(26px,3vw,38px);line-height:1.2;text-transform:none;letter-spacing:-.025em;margin-bottom:4px;padding:0}
       html[data-colum-manager="c4splus"] [data-cm-watchlist-toolbar] {display:flex!important;flex-direction:column!important;gap:14px;padding:16px;background:#15121b;border:1px solid #ffffff20;border-radius:12px}
@@ -347,34 +348,11 @@
             else input.value = String(settings[key]);
         }
     }
-    // Existing downloader versions keep their own layout loop. Mirror settings
-    // through their UI and storage, then override only the listing layout in CSS.
-    // This preserves all download/playback features without editing that script.
-    function syncDownloader() {
-        if (site !== 'c4splus') return;
-        const old = document.querySelector('#c4splus-layout-control')?.shadowRoot;
-        for (const [selector, key, property, event] of [
-            ['input[type=number]', 'columns', 'value', 'input'],
-            ['#hide-locked', 'hideLocked', 'checked', 'change']
-        ]) {
-            const input = old?.querySelector(selector);
-            const value = property === 'value' ? String(settings[key]) : settings[key];
-            if (input && input[property] !== value && !input.disabled) {
-                input[property] = value;
-                input.dispatchEvent(new Event(event, { bubbles: true }));
-            }
-        }
-    }
     function save() {
         try {
             localStorage.setItem(STORAGE_KEY, JSON.stringify(settings));
-            if (site === 'c4splus') {
-                localStorage.setItem('c4splus.layout.columns', String(settings.columns));
-                localStorage.setItem('c4splus.layout.hideLocked', String(settings.hideLocked));
-            }
             storageAvailable = true;
         } catch { storageAvailable = false; }
-        syncDownloader();
         applyLayout();
     }
     function bindInput(key) {
@@ -517,8 +495,9 @@
             for (const node of nextObserved) if (!observed.has(node)) resizeObserver.observe(node);
             observed = nextObserved;
             updateWatchlist(watchlistCards);
-            syncDownloader();
-            const message = virtualCount ? 'Virtualized results retain native positions until a supported adapter is ready.'
+            const unavailable = virtualCount > 0 && flowCount === 0;
+            for (const key of ['columns', 'gap', 'wide', 'hideLocked']) shadow.getElementById(key).disabled = unavailable;
+            const message = virtualCount ? 'Virtualized results retain native positions; columns, spacing and Hide locked apply only to supported lists.'
                 : flowCount ? `${settings.columns} maximum columns · ${flowCount} list${flowCount === 1 ? '' : 's'}. Fewer columns on narrow screens.`
                     : 'Waiting for a supported video listing…';
             const text = message + (storageAvailable ? '' : ' Storage unavailable; settings last this session.');
